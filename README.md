@@ -1,4 +1,4 @@
-# razorpay-recovery
+# payment-failure-recovery
 
 When an online payment fails in India, three things happen at once: the bank
 fires a debit SMS, the checkout says "failed", and **nobody tells the customer
