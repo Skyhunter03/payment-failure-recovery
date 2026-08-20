@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "Tells a customer where their money is after a Razorpay payment.failed, and offers the recovery path most likely to succeed for that specific cause. Test mode, SQLite, zero paid services.",
   "type": "module",
+  "license": "MIT",
   "engines": {
     "node": ">=20"
   },
