@@ -1,0 +1,24 @@
+{
+  "name": "razorpay-recovery",
+  "version": "1.0.0",
+  "description": "Tells a customer where their money is after a Razorpay payment.failed, and offers the recovery path most likely to succeed for that specific cause. Test mode, SQLite, zero paid services.",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "simulate": "node scripts/simulate.js",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.2.0",
+    "express": "^4.21.0"
+  },
+  "devDependencies": {
+    "vitest": "^2.1.0"
+  }
+}
