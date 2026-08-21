@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Silent handling vs. explained &amp; routed — modelled comparison</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700;800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    color-scheme: light;
+    --surface-page:   #f9f9f7;
+    --surface-card:   #fcfcfb;
+    --text-primary:   #0b0b0b;
+    --text-secondary: #52514e;
+    --text-muted:     #898781;
+    --hairline:       #e1e0d9;
+    --ring:           rgba(11,11,11,0.10);
+    --delta-good:     #006300;
+    --lane-silent:    #2a78d6;
+    --lane-guided:    #1baf7a;
+    --status-warning: #fab219;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:where(:not([data-theme="light"])) {
+      color-scheme: dark;
+      --surface-page:   #0d0d0d;
+      --surface-card:   #1a1a19;
+      --text-primary:   #ffffff;
+      --text-secondary: #c3c2b7;
+      --text-muted:     #898781;
+      --hairline:       #2c2c2a;
+      --ring:           rgba(255,255,255,0.10);
+      --delta-good:     #0ca30c;
+      --lane-silent:    #3987e5;
+      --lane-guided:    #199e70;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --surface-page:   #0d0d0d;
+    --surface-card:   #1a1a19;
+    --text-primary:   #ffffff;
+    --text-secondary: #c3c2b7;
+    --text-muted:     #898781;
+    --hairline:       #2c2c2a;
+    --ring:           rgba(255,255,255,0.10);
+    --delta-good:     #0ca30c;
+    --lane-silent:    #3987e5;
+    --lane-guided:    #199e70;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--surface-page); color: var(--text-primary);
+    font-family: "IBM Plex Sans", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 880px; margin: 0 auto; padding: 32px 20px 64px; }
+  h1 {
+    font-family: "Archivo", sans-serif; font-weight: 800; font-size: 24px;
+    letter-spacing: -0.01em; margin: 0 0 6px;
+  }
+  .subhead { color: var(--text-secondary); font-size: 14px; margin: 0 0 24px; }
+
+  .banner {
+    background: color-mix(in srgb, var(--status-warning) 16%, var(--surface-card));
+    border: 1px solid color-mix(in srgb, var(--status-warning) 55%, transparent);
+    border-radius: 10px; padding: 14px 16px; margin-bottom: 28px;
+    font-size: 13.5px; line-height: 1.55;
+  }
+  .banner strong { font-family: "Archivo", sans-serif; font-weight: 700; letter-spacing: 0.02em; }
+
+  .strip {
+    display: flex; gap: 0; border: 1px solid var(--hairline); border-radius: 10px;
+    overflow: hidden; margin-bottom: 32px; background: var(--surface-card);
+  }
+  .strip .cell {
+    flex: 1; padding: 14px 16px; border-right: 1px solid var(--hairline);
+  }
+  .strip .cell:last-child { border-right: none; }
+  .strip .cell .n {
+    font-family: "IBM Plex Mono", monospace; font-weight: 500; font-size: 20px;
+  }
+  .strip .cell .l { color: var(--text-secondary); font-size: 12px; margin-top: 2px; }
+
+  .metric { margin-bottom: 36px; }
+  .metric h2 {
+    font-family: "Archivo", sans-serif; font-weight: 700; font-size: 16px;
+    margin: 0 0 4px;
+  }
+  .metric .tag {
+    display: inline-block; font-size: 10.5px; font-weight: 600; letter-spacing: 0.06em;
+    text-transform: uppercase; color: var(--text-muted); margin-left: 8px;
+  }
+  .lanes {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 1px;
+    background: var(--hairline); border: 1px solid var(--hairline);
+    border-radius: 10px; overflow: hidden; margin-top: 10px;
+  }
+  .lane { background: var(--surface-card); padding: 16px 18px; }
+  .lane-label {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 12.5px; color: var(--text-secondary); margin-bottom: 8px;
+  }
+  .swatch { width: 10px; height: 10px; border-radius: 3px; flex: none; }
+  .swatch.silent { background: var(--lane-silent); }
+  .swatch.guided { background: var(--lane-guided); border: 1px solid var(--ring); }
+  .lane-value {
+    font-family: "Archivo", sans-serif; font-weight: 700; font-size: 26px;
+    letter-spacing: -0.01em;
+  }
+  .lane-sub { font-family: "IBM Plex Mono", monospace; font-size: 13px; color: var(--text-muted); font-weight: 400; }
+  .delta {
+    margin-top: 10px; font-size: 13px; color: var(--delta-good); font-weight: 500;
+  }
+  .delta .arrow { font-family: "IBM Plex Mono", monospace; }
+
+  details.assumptions {
+    margin-top: 40px; border-top: 1px solid var(--hairline); padding-top: 20px;
+  }
+  details.assumptions summary {
+    cursor: pointer; font-family: "Archivo", sans-serif; font-weight: 700; font-size: 14px;
+  }
+  .assump-list { margin: 14px 0; padding: 0; list-style: none; font-size: 13px; }
+  .assump-list li {
+    display: flex; justify-content: space-between; gap: 12px;
+    padding: 7px 0; border-bottom: 1px solid var(--hairline);
+  }
+  .assump-list li:last-child { border-bottom: none; }
+  .assump-list .k { color: var(--text-secondary); }
+  .assump-list .v { font-family: "IBM Plex Mono", monospace; color: var(--text-primary); text-align: right; }
+  pre.raw {
+    font-family: "IBM Plex Mono", monospace; font-size: 11.5px; line-height: 1.5;
+    background: var(--surface-card); border: 1px solid var(--hairline); border-radius: 8px;
+    padding: 14px; overflow-x: auto; margin-top: 14px; color: var(--text-secondary);
+  }
+  .repro { font-size: 12.5px; color: var(--text-muted); margin-top: 14px; }
+  .repro code {
+    font-family: "IBM Plex Mono", monospace; background: var(--surface-card);
+    border: 1px solid var(--hairline); border-radius: 4px; padding: 1px 6px;
+  }
+
+  @media (max-width: 560px) {
+    .lanes { grid-template-columns: 1fr; }
+    .strip { flex-direction: column; }
+    .strip .cell { border-right: none; border-bottom: 1px solid var(--hairline); }
+    .strip .cell:last-child { border-bottom: none; }
+  }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Silent handling vs. explained &amp; routed</h1>
+    <p class="subhead">What guided recovery is worth, modelled at N = 500 simulated payment failures.</p>
+
+    <div class="banner">
+      <strong>SIMULATED — MODELLED, NOT MEASURED.</strong>
+      Every number on this page comes from <code>scripts/simulate.js</code>, run offline against
+      500 synthetic failures (seed 42, fully reproducible — see below), using the SAME
+      classify → recovery decision logic this service runs live. It is a hypothesis about the
+      shape of the effect, not a claim about real traffic. This page is static — it does not read
+      from the live database.
+    </div>
+
+    <div class="strip">
+      <div class="cell"><div class="n">376 <span style="font-size:13px;color:var(--text-muted);">(75.2%)</span></div><div class="l">NOT_DEBITED</div></div>
+      <div class="cell"><div class="n">49 <span style="font-size:13px;color:var(--text-muted);">(9.8%)</span></div><div class="l">DEBITED_REVERSAL_EXPECTED</div></div>
+      <div class="cell"><div class="n">75 <span style="font-size:13px;color:var(--text-muted);">(15.0%)</span></div><div class="l">CONFIRMING</div></div>
+    </div>
+
+    <div class="metric">
+      <h2>Orders recovered<span class="tag">modelled</span></h2>
+      <div class="lanes">
+        <div class="lane">
+          <div class="lane-label"><span class="swatch silent"></span>Silent handling</div>
+          <div class="lane-value">189 <span class="lane-sub">37.8%</span></div>
+        </div>
+        <div class="lane">
+          <div class="lane-label"><span class="swatch guided"></span>Explained &amp; routed</div>
+          <div class="lane-value">239 <span class="lane-sub">47.8%</span></div>
+        </div>
+      </div>
+      <div class="delta"><span class="arrow">↑</span> +50 more orders recovered out of 500 simulated failures</div>
+    </div>
+
+    <div class="metric">
+      <h2>Value recovered<span class="tag">modelled</span></h2>
+      <div class="lanes">
+        <div class="lane">
+          <div class="lane-label"><span class="swatch silent"></span>Silent handling</div>
+          <div class="lane-value">₹49,35,103<span class="lane-sub">.26</span></div>
+        </div>
+        <div class="lane">
+          <div class="lane-label"><span class="swatch guided"></span>Explained &amp; routed</div>
+          <div class="lane-value">₹62,75,078<span class="lane-sub">.03</span></div>
+        </div>
+      </div>
+      <div class="delta"><span class="arrow">↑</span> +₹13,39,974.77 more value recovered</div>
+    </div>
+
+    <div class="metric">
+      <h2>Support contacts<span class="tag">modelled</span></h2>
+      <div class="lanes">
+        <div class="lane">
+          <div class="lane-label"><span class="swatch silent"></span>Silent handling</div>
+          <div class="lane-value">81 <span class="lane-sub">16.2%</span></div>
+        </div>
+        <div class="lane">
+          <div class="lane-label"><span class="swatch guided"></span>Explained &amp; routed</div>
+          <div class="lane-value">24 <span class="lane-sub">4.8%</span></div>
+        </div>
+      </div>
+      <div class="delta"><span class="arrow">↓</span> −57 fewer support contacts (an improvement)</div>
+    </div>
+
+    <details class="assumptions">
+      <summary>All modelled assumptions (click to expand)</summary>
+      <ul class="assump-list">
+        <li><span class="k">Simulated failures (N)</span><span class="v">500</span></li>
+        <li><span class="k">Seed</span><span class="v">42</span></li>
+        <li><span class="k">Amount range</span><span class="v">₹99 – ₹49,999</span></li>
+        <li><span class="k">Share on card vs UPI</span><span class="v">55% card</span></li>
+        <li><span class="k">Silent self-recovery rate</span><span class="v">35%</span></li>
+        <li><span class="k">Silent support-contact rate (not debited / debited / confirming)</span><span class="v">8% / 55% / 35%</span></li>
+        <li><span class="k">Guided recovery rate (retry-now / switch-now / wait / cancelled)</span><span class="v">62% / 55% / 40% / 20%</span></li>
+        <li><span class="k">Guided support-contact rate (not debited / debited / confirming)</span><span class="v">2% / 12% / 18%</span></li>
+      </ul>
+      <pre class="raw">{
+  "N_FAILURES": 500,
+  "SEED": 42,
+  "AMOUNT_MIN_PAISE": 9900,
+  "AMOUNT_MAX_PAISE": 4999900,
+  "CAUSE_MIX": [
+    { "value": "incorrect_otp", "weight": 22 },
+    { "value": "insufficient_funds", "weight": 18 },
+    { "value": "payment_cancelled", "weight": 14 },
+    { "value": "invalid_cvv", "weight": 6 },
+    { "value": "invalid_vpa", "weight": 8 },
+    { "value": "card_expired", "weight": 5 },
+    { "value": "invalid_card_number", "weight": 3 },
+    { "value": "international_transaction_not_allowed", "weight": 2 },
+    { "value": "issuer_down", "weight": 8 },
+    { "value": "gateway_technical_error", "weight": 5 },
+    { "value": "network_error", "weight": 3 },
+    { "value": "payment_timeout", "weight": 3 },
+    { "value": "upi_timeout", "weight": 2 },
+    { "value": "server_error", "weight": 1 }
+  ],
+  "SHARE_CARD": 0.55,
+  "DEBIT_REFERENCE_PROB": {
+    "insufficient_funds": 0.15, "issuer_down": 0.35, "gateway_technical_error": 0.3,
+    "network_error": 0.25, "payment_timeout": 0.4, "upi_timeout": 0.4,
+    "server_error": 0.3, "_default": 0.02
+  },
+  "SILENT_RECOVERY_PROB": 0.35,
+  "SILENT_SUPPORT_PROB_NOT_DEBITED": 0.08,
+  "SILENT_SUPPORT_PROB_DEBITED": 0.55,
+  "SILENT_SUPPORT_PROB_CONFIRMING": 0.35,
+  "GUIDED_RECOVERY_PROB_RETRY_NOW": 0.62,
+  "GUIDED_RECOVERY_PROB_SWITCH_NOW": 0.55,
+  "GUIDED_RECOVERY_PROB_WAIT": 0.4,
+  "GUIDED_RECOVERY_PROB_CANCELLED": 0.2,
+  "GUIDED_SUPPORT_PROB_NOT_DEBITED": 0.02,
+  "GUIDED_SUPPORT_PROB_DEBITED": 0.12,
+  "GUIDED_SUPPORT_PROB_CONFIRMING": 0.18
+}</pre>
+      <p class="repro">Reproduce exactly: <code>SIM_N=500 node scripts/simulate.js</code> from the repo root. Every constant above is declared, commented, and named in <code>scripts/simulate.js</code> — change any of them and re-run; nothing here is measured from real traffic.</p>
+    </details>
+  </div>
+</body>
+</html>

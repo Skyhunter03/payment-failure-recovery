@@ -13,7 +13,10 @@ import { MoneyState } from '../src/core/reasons.js';
 
 const ASSUMPTIONS = {
   // --- Traffic ------------------------------------------------------------
-  N_FAILURES: 5000, // synthetic failed payments to simulate
+  // SIM_N overrides the default run size (e.g. for generating a specific
+  // figure like the public/dashboard.html snapshot) without touching the
+  // script; `npm run simulate` with no env var still runs the full 5000.
+  N_FAILURES: Number(process.env.SIM_N) || 5000, // synthetic failed payments to simulate
   SEED: 42, // seeded RNG => identical run every time
 
   // Amount distribution (paise). Assumed, roughly e-commerce shaped.

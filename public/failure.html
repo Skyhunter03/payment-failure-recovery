@@ -4,44 +4,86 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Where's my money? — payment status</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700;800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
 <style>
-  :root { color-scheme: light dark; }
+  :root {
+    color-scheme: light;
+    --surface-page:   #f9f9f7;
+    --surface-card:   #fcfcfb;
+    --text-primary:   #0b0b0b;
+    --text-secondary: #52514e;
+    --text-muted:     #898781;
+    --hairline:       #e1e0d9;
+    --ring:           rgba(11,11,11,0.10);
+    --status-good:    #0ca30c;
+    --status-warning: #fab219;
+    --lane-silent:    #2a78d6;
+    --recovery-bg:    color-mix(in srgb, #2a78d6 8%, var(--surface-card));
+    --recovery-border:color-mix(in srgb, #2a78d6 30%, transparent);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:where(:not([data-theme="light"])) {
+      color-scheme: dark;
+      --surface-page: #0d0d0d; --surface-card: #1a1a19;
+      --text-primary: #ffffff; --text-secondary: #c3c2b7; --text-muted: #898781;
+      --hairline: #2c2c2a; --ring: rgba(255,255,255,0.10);
+      --lane-silent: #3987e5;
+      --recovery-bg: color-mix(in srgb, #3987e5 14%, var(--surface-card));
+      --recovery-border: color-mix(in srgb, #3987e5 40%, transparent);
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --surface-page: #0d0d0d; --surface-card: #1a1a19;
+    --text-primary: #ffffff; --text-secondary: #c3c2b7; --text-muted: #898781;
+    --hairline: #2c2c2a; --ring: rgba(255,255,255,0.10);
+    --lane-silent: #3987e5;
+    --recovery-bg: color-mix(in srgb, #3987e5 14%, var(--surface-card));
+    --recovery-border: color-mix(in srgb, #3987e5 40%, transparent);
+  }
+  * { box-sizing: border-box; }
   body {
-    font-family: system-ui, -apple-system, sans-serif;
+    font-family: "IBM Plex Sans", system-ui, sans-serif;
+    background: var(--surface-page); color: var(--text-primary);
     max-width: 560px; margin: 32px auto; padding: 0 16px;
-    line-height: 1.5;
+    line-height: 1.5; -webkit-font-smoothing: antialiased;
   }
   .badge {
-    display: inline-block; font-size: 12px; font-weight: 600; letter-spacing: 0.04em;
-    padding: 2px 8px; border-radius: 999px; margin-bottom: 12px;
-    background: #fef3c7; color: #92400e;
+    display: inline-block; font-family: "Archivo", sans-serif;
+    font-size: 11.5px; font-weight: 700; letter-spacing: 0.05em;
+    padding: 3px 9px; border-radius: 999px; margin-bottom: 12px;
+    background: color-mix(in srgb, var(--status-warning) 22%, var(--surface-card));
+    border: 1px solid color-mix(in srgb, var(--status-warning) 55%, transparent);
+    color: color-mix(in srgb, var(--status-warning) 65%, var(--text-primary));
   }
-  h1 { font-size: 22px; margin: 0 0 20px; }
-  .amount { font-size: 15px; color: #666; margin-top: -14px; margin-bottom: 20px; }
+  h1 { font-family: "Archivo", sans-serif; font-weight: 800; font-size: 22px; letter-spacing: -0.01em; margin: 0 0 20px; }
+  .amount { font-family: "IBM Plex Mono", monospace; font-size: 14px; color: var(--text-secondary); margin-top: -14px; margin-bottom: 20px; }
   .qa { margin-bottom: 18px; }
-  .qa dt { font-weight: 600; font-size: 13px; color: #666; margin-bottom: 2px; }
+  .qa dt { font-family: "Archivo", sans-serif; font-weight: 600; font-size: 12.5px; color: var(--text-secondary); margin-bottom: 3px; margin-top: 14px; }
   .qa dd { margin: 0; }
-  .tracker { margin: 24px 0; padding: 0; list-style: none; }
+  .tracker { margin: 24px 0; padding: 16px 0 0; list-style: none; border-top: 1px solid var(--hairline); }
   .tracker li { display: flex; gap: 10px; padding: 8px 0; align-items: flex-start; }
   .mark {
-    flex: none; width: 22px; height: 22px; border-radius: 999px;
+    flex: none; width: 20px; height: 20px; border-radius: 999px;
     display: flex; align-items: center; justify-content: center;
-    font-size: 12px; font-weight: 700; color: #fff;
+    font-size: 11px; font-weight: 700;
   }
-  .mark.done { background: #16a34a; }
-  .mark.active { background: #2563eb; }
-  .mark.pending { background: #9ca3af; }
-  .mark.unknown { background: #d97706; }
-  .mark.skipped { background: #d1d5db; color: #6b7280; }
-  .tracker .label { font-weight: 600; }
-  .tracker .note { font-size: 13px; color: #666; }
+  .mark.done { background: var(--status-good); color: #fff; }
+  .mark.active { background: var(--lane-silent); color: #fff; }
+  .mark.pending { background: var(--hairline); color: var(--text-muted); }
+  .mark.unknown { background: var(--status-warning); color: #3d2b00; }
+  .mark.skipped { background: var(--surface-card); border: 1px solid var(--hairline); color: var(--text-muted); }
+  .tracker .label { font-weight: 600; font-size: 14px; }
+  .tracker .note { font-size: 12.5px; color: var(--text-secondary); }
   .recovery {
     margin-top: 24px; padding: 14px 16px; border-radius: 10px;
-    background: #eff6ff; border: 1px solid #bfdbfe;
+    background: var(--recovery-bg); border: 1px solid var(--recovery-border);
   }
-  .recovery .rationale { font-size: 14px; }
-  .err { color: #b91c1c; }
-  .ref { font-family: ui-monospace, monospace; }
+  .recovery .rationale { font-size: 13.5px; }
+  .err { color: #d03b3b; }
+  .ref { font-family: "IBM Plex Mono", monospace; }
 </style>
 </head>
 <body>
