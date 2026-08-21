@@ -33,7 +33,7 @@ export function buildCustomerMessage({
   const q1 = didMyMoneyLeave(classification, amount);
   const q2 = isItComingBack(classification, tracker);
   const q3 = shouldIPayAgainNow(recovery);
-  const q4 = howDoIStillGetIt(recovery);
+  const q4 = howDoIStillGetIt(recovery, classification.state);
 
   return {
     state: classification.state,
@@ -104,16 +104,31 @@ function shouldIPayAgainNow(recovery) {
   return `Not right this second. ${recovery.rationale} (Best to wait about ${wait}.)`;
 }
 
-function howDoIStillGetIt(recovery) {
+// The right "how do I still get it" copy depends on the funds state, not
+// just the recovery decision: retrying reads fine when nothing was ever
+// debited, but the same phrasing is actively wrong once money is confirmed
+// debited (sounds like a retry of the same payment, when recovery always
+// means a fresh one) or still unconfirmed (retrying before we know risks a
+// double charge).
+function howDoIStillGetIt(recovery, state) {
   const method = methodLabel(recovery.method);
-  if (recovery.switchMethod) {
-    return `To still get what you wanted, switch to ${method}. ${
-      recovery.delayMinutes === 0 ? 'You can do that now.' : ''
-    }`.trim();
+
+  if (state === MoneyState.DEBITED_REVERSAL_EXPECTED) {
+    return `This reversal happens on its own — you don't need to do anything to get your money back. If you'd rather not wait, you can make a fresh payment now with ${method}; that's a new, separate payment, not a retry of this one.`;
   }
-  return `To still get what you wanted, stay with ${method}${
-    recovery.method === 'same' ? ' (the way you just tried)' : ''
-  }.`;
+
+  if (state === MoneyState.CONFIRMING) {
+    return `Hold off paying again until we've confirmed what happened to this one — going again before we know risks a double charge. We'll update this the moment we hear back from your bank.`;
+  }
+
+  // NOT_DEBITED: nothing was charged, so retrying (on whatever method
+  // recovery recommends) is genuinely safe right away.
+  if (recovery.switchMethod) {
+    return `Just pay by ${method} instead — that should get it through this time.`;
+  }
+  return recovery.method === 'same'
+    ? `Just try again — the same method should work this time.`
+    : `Just try again with ${method} — that should work this time.`;
 }
 
 // Build the 3-step tracker honestly for each state.
