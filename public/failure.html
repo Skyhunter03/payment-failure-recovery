@@ -297,7 +297,6 @@
 
         const rzp = new Razorpay(options);
         rzp.on('payment.failed', function (response) {
-          console.log('FAILED (payment.failed) response:', response);
           const paymentId = response.error && response.error.metadata && response.error.metadata.payment_id;
           btn.disabled = false;
           if (paymentId) {
