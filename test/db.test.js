@@ -1,3 +1,4 @@
+// Tests the db.js interface directly (idempotency, order resolution, stats).
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as db from '../src/db/index.js';
 

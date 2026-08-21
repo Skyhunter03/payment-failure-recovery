@@ -1,3 +1,4 @@
+// Tests buildCustomerMessage: the deterministic, honest customer-facing message.
 import { describe, it, expect } from 'vitest';
 import { classifyMoneyState } from '../src/core/classify.js';
 import { decideRecovery } from '../src/core/recovery.js';

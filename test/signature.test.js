@@ -1,3 +1,4 @@
+// Tests verifySignature: HMAC-SHA256 over the raw body, timing-safe compare.
 import { describe, it, expect } from 'vitest';
 import crypto from 'node:crypto';
 import { verifySignature } from '../src/webhook/signature.js';

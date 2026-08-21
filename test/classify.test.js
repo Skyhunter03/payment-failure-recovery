@@ -1,3 +1,4 @@
+// Tests the core honesty rule: never claim a debit without proof.
 import { describe, it, expect } from 'vitest';
 import { classifyMoneyState } from '../src/core/classify.js';
 import { MoneyState } from '../src/core/reasons.js';

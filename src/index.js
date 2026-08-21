@@ -1,3 +1,5 @@
+// Process entry point: initialises the DB, builds the Express app, starts the
+// background tickers (follow-ups, confirming-poller), and starts listening.
 import { config, getWebhookSecret } from './config.js';
 import { initDb } from './db/index.js';
 import { createApp } from './server.js';

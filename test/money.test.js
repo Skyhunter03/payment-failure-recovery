@@ -1,3 +1,4 @@
+// Tests ₹ formatting (Indian digit grouping) and the working-day reversal math.
 import { describe, it, expect } from 'vitest';
 import { formatInr, groupIndian, addWorkingDays, isWeekend } from '../src/core/money.js';
 

@@ -1,3 +1,4 @@
+// Tests pollOnce's CONFIRMING-upgrade logic with a stubbed Razorpay response.
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as db from '../src/db/index.js';
 import { pollOnce } from '../src/confirming-poller.js';

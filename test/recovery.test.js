@@ -1,3 +1,4 @@
+// Tests decideRecovery: one recovery decision per cause, not one blind retry.
 import { describe, it, expect } from 'vitest';
 import { decideRecovery } from '../src/core/recovery.js';
 

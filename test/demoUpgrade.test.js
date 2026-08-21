@@ -1,3 +1,4 @@
+// Tests the /api/demo/upgrade-confirming endpoint's validation and happy path.
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as db from '../src/db/index.js';
 import { demoUpgradeConfirming } from '../src/api/demoUpgrade.js';

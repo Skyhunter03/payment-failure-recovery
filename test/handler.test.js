@@ -1,3 +1,4 @@
+// Tests handleEvent: idempotency and follow-up suppression end to end.
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as db from '../src/db/index.js';
 import { handleEvent } from '../src/webhook/handler.js';

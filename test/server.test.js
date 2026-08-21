@@ -1,3 +1,4 @@
+// HTTP-level tests: real requests against the Express app (routes, signature, rate limit).
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import crypto from 'node:crypto';
 import * as db from '../src/db/index.js';
