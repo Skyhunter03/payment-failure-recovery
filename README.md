@@ -69,7 +69,7 @@ The `CONFIRMING` state is deliberate. Most systems would guess; guessing wrong a
 - **HMAC webhook signature verification** — `src/webhook/signature.js`. `crypto.createHmac('sha256', secret)`, constant-time compare (not `===`), over the raw body, before any JSON parsing. Without this, anyone could POST a forged failure event.
 - **Event-level idempotency** — `src/db/`, `src/webhook/handler.js`. `INSERT ... ON CONFLICT DO NOTHING` on `processed_events`, keyed by event id. Razorpay retries deliveries; duplicates are acknowledged and ignored so the customer is never messaged twice.
 - **Follow-up suppression** — a scheduled recovery nudge is cancelled if the order is paid before it fires.
-- **Deployed** — Render (Node/Express) + Neon Postgres. 63 tests, CI green (test + secret-scan) on every push.
+- **Deployed** — Render (Node/Express) + Neon Postgres. 66 tests, CI green (test + secret-scan) on every push.
 
 ---
 
@@ -139,7 +139,7 @@ Presence of `acquirer_data.rrn` is what moves the classification to `DEBITED_REV
 ```bash
 npm install
 cp .env.example .env      # test-mode Razorpay keys only
-npm test                  # 63 tests
+npm test                  # 66 tests
 npm start
 ```
 
