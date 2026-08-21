@@ -1,7 +1,8 @@
-import { MoneyState } from './reasons.js';
+import { MoneyState, RETRY_NOW_SAME, DEAD_CARD_REASONS, INFRA_REASONS } from './reasons.js';
 import { formatInr, addWorkingDays, formatDate } from './money.js';
 
 // Deterministic templates. No LLM. Same input -> byte-identical output.
+// All customer-facing text is English only.
 //
 // The message answers the four questions in the order a person actually panics:
 //   1. Did my money leave?
@@ -62,18 +63,18 @@ function didMyMoneyLeave(classification, amount) {
     case MoneyState.NOT_DEBITED:
       return {
         headline: `No money left your account.`,
-        text: `Good news: ${amount} was never debited. The payment was declined before any money could move.`,
+        text: `No. ${amount} was never debited — the payment was declined before any money could move.`,
       };
     case MoneyState.DEBITED_REVERSAL_EXPECTED:
       return {
         headline: `${amount} left your account — and it's on its way back.`,
-        text: `Yes, ${amount} was debited. Your bank has already recorded the transaction, and because the payment failed it will be reversed automatically.`,
+        text: `Yes, ${amount} was debited. Your bank has recorded the transaction, and because the payment didn't complete, it will be reversed automatically.`,
       };
     case MoneyState.CONFIRMING:
     default:
       return {
         headline: `We're checking with your bank about ${amount}.`,
-        text: `We can't yet confirm whether ${amount} left your account. We do not want to guess, so we're verifying it with your bank right now.`,
+        text: `We can't confirm yet whether ${amount} left your account. We won't guess — we're verifying it with your bank right now.`,
       };
   }
 }
@@ -81,27 +82,59 @@ function didMyMoneyLeave(classification, amount) {
 function isItComingBack(classification, tracker) {
   switch (classification.state) {
     case MoneyState.NOT_DEBITED:
-      return `There's nothing to come back — the money never left.`;
+      return `There's nothing to come back — the money never left your account.`;
     case MoneyState.DEBITED_REVERSAL_EXPECTED: {
       const back = tracker[2];
       const ref = classification.reference;
       const refLine = ref
-        ? ` Your bank reference is ${ref.value} (${refLabel(ref.field)}) — keep it if you ever need to ask your bank.`
+        ? ` Your bank reference is ${ref.value} (${refLabel(ref.field)}) — keep it in case you ever need to check with your bank.`
         : '';
-      return `Yes. Expect it back by ${back.expectedDate} at the latest.${refLine}`;
+      return `Yes. You can expect it back by ${back.expectedDate} at the latest.${refLine}`;
     }
     case MoneyState.CONFIRMING:
     default:
-      return `If any money did leave, it comes back automatically — but we won't invent a date until we've confirmed it actually left.`;
+      return `If any money did leave, it comes back automatically. But we won't promise a date until we've confirmed it actually left.`;
   }
 }
 
+// Cause-specific, not just delay-specific: recovery.rationale is meant for
+// the recovery box elsewhere on the page, not duplicated here. This answers
+// "should I pay again" in its own words, still keyed off the SAME cause
+// taxonomy recovery.js already uses (RETRY_NOW_SAME / DEAD_CARD_REASONS /
+// INFRA_REASONS, imported from the shared reasons.js vocabulary) so the
+// wording never drifts from what recovery.js actually decided — only the
+// sentence changes, never the decision.
 function shouldIPayAgainNow(recovery) {
-  if (recovery.delayMinutes === 0) {
-    return `Yes — you can pay again right now. ${recovery.rationale}`;
-  }
+  const cause = recovery.cause;
   const wait = humanDelay(recovery.delayMinutes);
-  return `Not right this second. ${recovery.rationale} (Best to wait about ${wait}.)`;
+
+  if (recovery.delayMinutes === 0) {
+    if (RETRY_NOW_SAME.has(cause)) {
+      return cause === 'invalid_cvv'
+        ? `Yes, you can pay again right now. The CVV was entered wrong, and nothing was charged. Just enter it correctly this time and you're done.`
+        : `Yes, you can pay again right now. The OTP step wasn't completed, and nothing was charged. Just enter it this time and you're done.`;
+    }
+    if (cause === 'invalid_vpa') {
+      return `Yes, you can pay again right now. The UPI ID wasn't recognised, and nothing was charged. Just correct it and you're done.`;
+    }
+    if (DEAD_CARD_REASONS.has(cause)) {
+      return `That card can't complete this payment, and retrying it will fail again — but nothing was charged, so you can pay again right now using UPI instead.`;
+    }
+    return `Yes, you can pay again right now. Nothing was charged on that attempt — just try it again.`;
+  }
+
+  if (cause === 'insufficient_funds') {
+    return `Not just yet. This attempt failed due to insufficient balance, so retrying now would only fail again. We'll remind you once your funds are ready — usually within about ${wait}.`;
+  }
+  if (INFRA_REASONS.has(cause)) {
+    return recovery.switchMethod
+      ? `Not right now. This looks like a temporary bank or gateway issue, not your card. Give it about ${wait}, then pay by UPI — it routes around whatever was down.`
+      : `Not right now. This looks like a temporary bank or gateway issue. Give it about ${wait} and try again — it usually clears on its own.`;
+  }
+  if (cause === 'payment_cancelled') {
+    return `You cancelled this payment yourself, so nothing was charged. We'll send one gentle reminder in about ${wait} and then leave you alone.`;
+  }
+  return `We couldn't pin down exactly what happened. We'll check back in about ${wait} rather than guess or keep nagging you.`;
 }
 
 // The right "how do I still get it" copy depends on the funds state, not
@@ -114,21 +147,21 @@ function howDoIStillGetIt(recovery, state) {
   const method = methodLabel(recovery.method);
 
   if (state === MoneyState.DEBITED_REVERSAL_EXPECTED) {
-    return `This reversal happens on its own — you don't need to do anything to get your money back. If you'd rather not wait, you can make a fresh payment now with ${method}; that's a new, separate payment, not a retry of this one.`;
+    return `This reversal happens on its own — you don't need to do anything to get your money back. If you'd rather not wait, you can make a fresh payment now using ${method}. That's a new, separate payment, not a retry of this one.`;
   }
 
   if (state === MoneyState.CONFIRMING) {
-    return `Hold off paying again until we've confirmed what happened to this one — going again before we know risks a double charge. We'll update this the moment we hear back from your bank.`;
+    return `Please hold off on paying again until we've confirmed what happened here — paying now could risk a double charge. We'll update this screen the moment we hear back from your bank.`;
   }
 
   // NOT_DEBITED: nothing was charged, so retrying (on whatever method
   // recovery recommends) is genuinely safe right away.
   if (recovery.switchMethod) {
-    return `Just pay by ${method} instead — that should get it through this time.`;
+    return `Simply pay by ${method} instead — it should go through this time.`;
   }
   return recovery.method === 'same'
-    ? `Just try again — the same method should work this time.`
-    : `Just try again with ${method} — that should work this time.`;
+    ? `Simply try again with the same method — it should go through this time.`
+    : `Simply try again with ${method} — it should go through this time.`;
 }
 
 // Build the 3-step tracker honestly for each state.
