@@ -95,4 +95,6 @@ Replayed the identical `x-razorpay-event-id` (`evt_step5_e2e`) for the webhook i
 
 ## Reproducing
 
-Every request above was a real HMAC-SHA256-signed `POST` to `/webhook/razorpay` with `RAZORPAY_WEBHOOK_SECRET=whsec_local_test_secret` (the value currently set on Render — rotate it before using this for anything beyond a demo). See `scripts/send-test-webhook.js` for a scripted equivalent against a local instance.
+Every request above was a real HMAC-SHA256-signed `POST` to `/webhook/razorpay`, signed with whatever value `RAZORPAY_WEBHOOK_SECRET` held on Render at the time (not printed here — see the note below). See `scripts/send-test-webhook.js` for a scripted equivalent against a local instance.
+
+**Secret rotation:** the demo secret used during this verification pass has since been rotated. `RAZORPAY_WEBHOOK_SECRET` is env-only (Render dashboard + local `.env`, never the repo) — if you're standing this up for anything beyond a throwaway demo, generate a fresh one yourself (e.g. `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`) and set it in both the Render dashboard and the Razorpay dashboard's webhook config; they must match exactly.
