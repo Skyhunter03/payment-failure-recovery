@@ -12,6 +12,7 @@ import { getRazorpayKeys, config } from './config.js';
 import * as db from './db/index.js';
 import { messageFromFailureRow } from './api/failureLookup.js';
 import { simulateFailure } from './api/simulate.js';
+import { demoUpgradeConfirming } from './api/demoUpgrade.js';
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const checkoutPage = path.join(rootDir, 'test-checkout.html');
@@ -83,6 +84,22 @@ export function createApp({
     } catch (err) {
       if (err && err.status) return res.status(err.status).json({ error: err.error });
       req.log.error('simulate_failure_threw', { error: String(err) });
+      res.status(500).json({ error: 'internal error' });
+    }
+  });
+
+  // Demo helper: runs the REAL confirming-poller (pollOnce, unmodified
+  // classify.js, a real DB update) against a REAL webhook-originated
+  // CONFIRMING row, with only the Razorpay API response simulated -- there is
+  // no real Razorpay payment behind a demo id to actually poll. Refuses
+  // anything that isn't already a real, currently-CONFIRMING row.
+  app.post('/api/demo/upgrade-confirming', express.json(), async (req, res) => {
+    try {
+      const result = await demoUpgradeConfirming(req.body || {});
+      res.json(result);
+    } catch (err) {
+      if (err && err.status) return res.status(err.status).json({ error: err.error });
+      req.log.error('demo_upgrade_threw', { error: String(err) });
       res.status(500).json({ error: 'internal error' });
     }
   });
