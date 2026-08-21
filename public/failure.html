@@ -90,6 +90,7 @@
   }
   .recovery-action:disabled { opacity: 0.6; cursor: default; }
   .recovery-status { font-size: 12.5px; color: var(--text-secondary); margin-top: 8px; }
+  .recovery-hint { font-size: 12px; color: var(--text-muted); margin-top: 6px; }
   .err { color: #d03b3b; }
   .ref { font-family: "IBM Plex Mono", monospace; }
 </style>
@@ -163,17 +164,32 @@
     // switchMethod) -- nothing here re-decides anything recovery.js already
     // decided.
     //
+    // The engine's method is a RECOMMENDATION, never a restriction. An
+    // earlier version hard-restricted Checkout to a single method
+    // (config.display.blocks + show_default_blocks:false) when method was
+    // 'upi' -- on an account where UPI isn't enabled, that's a dead end
+    // ("No appropriate payment method found"), which defeats the entire
+    // point of a recovery path. Checkout is now ALWAYS opened with every
+    // method available; the recommendation is surfaced only as copy, which
+    // can never trap the customer regardless of what's enabled on the
+    // account. (A "soft prioritise, don't hide" Razorpay config exists in
+    // principle, but the exact syntax could not be confirmed with the
+    // confidence this already-once-burned feature needs -- not worth
+    // risking a second dead end for a cosmetic ordering win.)
+    //
     // m.recovery.method is 'upi' or 'same' (recovery.js never returns a bare
-    // 'card' as a target). 'upi' -> restrict Checkout to UPI, matching the
-    // engine's explicit instruction. 'same' means "retry whatever method the
-    // customer used" -- but the ORIGINAL method is never persisted (see
-    // failureLookup.js: `method: null`), so at read time there is no stored
-    // value to restrict to. Honest handling: offer normal, unrestricted
-    // Checkout rather than guess or silently default to a specific rail.
+    // 'card' as a target). 'same' means "retry whatever method the customer
+    // used" -- but the ORIGINAL method is never persisted (see
+    // failureLookup.js: `method: null`), so there's nothing to name even as
+    // a recommendation; the neutral label covers this honestly.
     function buildRecoveryAction(m) {
-      const label = m.recovery.method === 'upi' ? 'Pay again with UPI' : 'Retry payment';
+      const recommendsUpi = m.recovery.method === 'upi';
+      const label = recommendsUpi ? 'Pay again — UPI recommended' : 'Try another payment method';
       const btn = el('button', { class: 'recovery-action', type: 'button', text: label });
       const status = el('div', { class: 'recovery-status' });
+      const hint = recommendsUpi
+        ? el('div', { class: 'recovery-hint', text: 'We recommend UPI for this — every payment method is still available.' })
+        : null;
 
       btn.addEventListener('click', async function () {
         btn.disabled = true;
@@ -209,21 +225,8 @@
           },
           theme: { color: '#3399cc' },
         };
-        // Only when the engine explicitly said UPI: restrict Checkout to it,
-        // Razorpay's own documented "show only one method" config. For
-        // method:'same' this is omitted entirely -- normal Checkout, every
-        // method available, per the honesty note above.
-        if (m.recovery.method === 'upi') {
-          options.config = {
-            display: {
-              blocks: {
-                upi: { name: 'Pay via UPI', instruments: [{ method: 'upi' }] },
-              },
-              sequence: ['block.upi'],
-              preferences: { show_default_blocks: false },
-            },
-          };
-        }
+        // Deliberately no method restriction here (see the note above the
+        // function) -- Checkout always opens with every method available.
 
         const rzp = new Razorpay(options);
         rzp.on('payment.failed', function (response) {
@@ -242,7 +245,9 @@
         rzp.open();
       });
 
-      return el('div', {}, [btn, status]);
+      const wrap = el('div', {}, [btn, status]);
+      if (hint) wrap.appendChild(hint);
+      return wrap;
     }
 
     // Real webhook delivery is async and can trail the browser landing here
