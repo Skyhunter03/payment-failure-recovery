@@ -69,6 +69,8 @@ The `CONFIRMING` state is deliberate. Most systems would guess; guessing wrong a
 - **HMAC webhook signature verification** — `src/webhook/signature.js`. `crypto.createHmac('sha256', secret)`, constant-time compare (not `===`), over the raw body, before any JSON parsing. Without this, anyone could POST a forged failure event.
 - **Event-level idempotency** — `src/db/`, `src/webhook/handler.js`. `INSERT ... ON CONFLICT DO NOTHING` on `processed_events`, keyed by event id. Razorpay retries deliveries; duplicates are acknowledged and ignored so the customer is never messaged twice.
 - **Follow-up suppression** — a scheduled recovery nudge is cancelled if the order is paid before it fires.
+- **Live customer-screen auto-update** — `public/failure.html`. The `CONFIRMING` screen re-fetches `/api/failure/:id` every 3 seconds and re-renders itself the moment the poller resolves it — no reload, no WebSockets/SSE, just a plain `setInterval`. A "Simulate bank confirmation (demo)" button on that screen fires the same poller endpoint on demand, for recordings that can't wait on the real interval.
+- **Recovery button, not just recovery text** — `public/failure.html`. Clicking the recovery action creates a fresh Razorpay order (`/create-order`, never a capture of the failed payment's funds) and opens Checkout with every payment method available. `recovery.method` is surfaced only as button copy ("Pay again — UPI recommended" / "Try another payment method"), never a hard restriction — so it can never dead-end a customer on a method their account doesn't actually have enabled.
 - **Deployed** — Render (Node/Express) + Neon Postgres. 66 tests, CI green (test + secret-scan) on every push.
 
 ---
@@ -131,6 +133,70 @@ Presence of `acquirer_data.rrn` is what moves the classification to `DEBITED_REV
 | Bank confirms RRN late | State stays honest `CONFIRMING`; poller rechecks every 5 min by default (`CONFIRMING_POLL_MS`) and upgrades it when the reference arrives |
 | Order paid before a recovery nudge fires | Pending follow-up suppressed |
 | Failure with no acquirer reference | Classified `CONFIRMING`, never falsely marked debited |
+
+---
+
+## Verified state (submission snapshot)
+
+Everything below was re-derived directly from the code and the live deployment — not carried over from memory.
+
+**Tests:** 66 passing (`npm test` → 10 test files, 66 tests)
+
+**Routes**
+
+| Method | Path |
+|---|---|
+| `GET` | `/healthz` |
+| `GET` | `/` (redirects to `/demo`) |
+| `GET` | `/demo` |
+| `GET` | `/api/failure/:id` |
+| `POST` | `/api/simulate-failure` |
+| `POST` | `/api/demo/upgrade-confirming` |
+| `GET` | `/checkout` |
+| `POST` | `/create-order` |
+| `POST` | `/webhook/razorpay` |
+| — | `express.static(public/)` — serves `failure.html`, `dashboard.html`, `demo.html`, `showcase/index.html` directly |
+
+**`src/` layout**
+
+```
+src/
+├── api/
+│   ├── demoUpgrade.js
+│   ├── failureLookup.js
+│   └── simulate.js
+├── config.js
+├── confirming-poller.js
+├── core/
+│   ├── classify.js
+│   ├── message.js
+│   ├── money.js
+│   ├── reasons.js
+│   └── recovery.js
+├── db/
+│   └── index.js
+├── fixtures.js
+├── followup-ticker.js
+├── index.js
+├── logger.js
+├── render.js
+├── server.js
+└── webhook/
+    ├── handler.js
+    ├── signature.js
+    └── validate.js
+```
+
+**Confirmed real, not aspirational:**
+
+- **HMAC signature verification** — `src/webhook/signature.js`: `crypto.createHmac('sha256', secret)` + `crypto.timingSafeEqual` (constant-time), over the raw request body, before any JSON parsing.
+- **Event-level idempotency** — `src/db/index.js` `markEventSeen()`: `INSERT OR IGNORE` (SQLite) / `ON CONFLICT (event_id) DO NOTHING` (Postgres) on `processed_events`.
+- **Confirming poller** — `src/confirming-poller.js` `startConfirmingPoller()`: a real `setInterval`, wired into `src/index.js` at boot with `config.confirmingPollMs`.
+- **Confirming-page live auto-refresh + demo button** — `public/failure.html` `watchForUpdate()`: a plain `setInterval` (3s) re-fetches `/api/failure/:id` only while `state === 'CONFIRMING'`, re-renders on change, stops on resolution; the on-page "Simulate bank confirmation (demo)" button triggers the same real poller endpoint for a one-click live demo.
+- **Recovery button with method recommendation** — `public/failure.html` `buildRecoveryAction()`: creates a fresh order and opens Checkout with every method available, labelling the button per `recovery.method` without ever restricting which methods Checkout shows.
+
+**Live:** https://payment-failure-recovery.onrender.com
+**Commit:** `60f837c3459e05f206a284dd753e77375919e47f`
 
 ---
 
