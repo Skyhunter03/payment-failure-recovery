@@ -13,6 +13,7 @@ import * as db from './db/index.js';
 import { messageFromFailureRow } from './api/failureLookup.js';
 import { simulateFailure } from './api/simulate.js';
 import { demoUpgradeConfirming } from './api/demoUpgrade.js';
+import { mintFreshConfirming } from './api/demoConfirming.js';
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const checkoutPage = path.join(rootDir, 'test-checkout.html');
@@ -84,6 +85,21 @@ export function createApp({
     } catch (err) {
       if (err && err.status) return res.status(err.status).json({ error: err.error });
       req.log.error('simulate_failure_threw', { error: String(err) });
+      res.status(500).json({ error: 'internal error' });
+    }
+  });
+
+  // Demo helper: mints a fresh CONFIRMING row through the real webhook
+  // pipeline (see demoConfirming.js) so the CONFIRMING demo link is
+  // repeatable -- every fresh page load gets its own row, instead of one
+  // fixed id that's spent the first time someone actually clicks through.
+  app.post('/api/demo/fresh-confirming', async (req, res) => {
+    try {
+      const result = await mintFreshConfirming();
+      res.status(201).json(result);
+    } catch (err) {
+      if (err && err.status) return res.status(err.status).json({ error: err.error });
+      req.log.error('fresh_confirming_threw', { error: String(err) });
       res.status(500).json({ error: 'internal error' });
     }
   });

@@ -99,6 +99,7 @@
     font-family: "IBM Plex Sans", sans-serif; font-weight: 600; font-size: 12.5px;
     background: transparent; color: var(--text-secondary); border: 1px solid var(--hairline);
     border-radius: 6px; padding: 6px 10px; cursor: pointer;
+    max-width: 100%; white-space: normal; text-align: left; line-height: 1.4;
   }
   .demo-upgrade-btn:disabled { opacity: 0.6; cursor: default; }
   .demo-upgrade-status { font-size: 12px; color: var(--text-muted); margin-top: 6px; }
@@ -183,7 +184,7 @@
     // running from watchForUpdate() picks up the change and re-renders on
     // its own, same as it would for a real upgrade with no button involved.
     function buildDemoUpgradeControl(id) {
-      const btn = el('button', { class: 'demo-upgrade-btn', type: 'button', text: 'Simulate bank confirmation (demo)' });
+      const btn = el('button', { class: 'demo-upgrade-btn', type: 'button', text: 'Simulate bank confirmation (demo only — production uses the background poller)' });
       const status = el('div', { class: 'demo-upgrade-status' });
 
       btn.addEventListener('click', async function () {
@@ -342,12 +343,38 @@
 
     async function load() {
       const params = new URLSearchParams(location.search);
-      const id = params.get('id');
       const fromCheckout = params.get('from') === 'checkout';
       const app = document.getElementById('app');
+      let id = params.get('id');
+
+      // ?demo=confirming is the repeatable CONFIRMING demo link: every
+      // fresh page load mints its own new CONFIRMING row (through the real
+      // webhook pipeline -- see src/api/demoConfirming.js) instead of
+      // pointing at one fixed id that's spent the first time someone
+      // actually clicks the demo button. Reopening the link always lands on
+      // a brand-new row.
+      if (!id && params.get('demo') === 'confirming') {
+        app.innerHTML = '';
+        app.appendChild(el('p', {}, [el('span', { text: 'Setting up a fresh demo failure…' })]));
+        try {
+          const r = await fetch('/api/demo/fresh-confirming', { method: 'POST' });
+          const body = await r.json();
+          if (!r.ok) {
+            app.innerHTML = '';
+            app.appendChild(el('p', { class: 'err', text: `Could not set up the demo: ${body.error || r.status}` }));
+            return;
+          }
+          id = body.id;
+        } catch (e) {
+          app.innerHTML = '';
+          app.appendChild(el('p', { class: 'err', text: `Could not reach the service: ${e.message}` }));
+          return;
+        }
+      }
+
       if (!id) {
         app.innerHTML = '';
-        app.appendChild(el('p', { class: 'err', text: 'No ?id= given. Open this page as /failure.html?id=<payment-or-demo-id>.' }));
+        app.appendChild(el('p', { class: 'err', text: 'No ?id= given. Open this page as /failure.html?id=<payment-or-demo-id>, or /failure.html?demo=confirming for a fresh live demo.' }));
         return;
       }
 
