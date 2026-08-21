@@ -137,6 +137,24 @@ export function createApp({
       });
     }
     const auth = Buffer.from(`${keyId}:${keySecret}`).toString('base64');
+
+    // Recovery orders (opened from the failure screen's recovery button)
+    // pass the original failed payment's id so a merchant looking at
+    // Razorpay's dashboard can trace a fresh order back to what it's
+    // recovering. Razorpay's `notes` field is exactly built for this kind
+    // of private metadata -- it does NOT link the orders in any functional
+    // way, and this order is still a fully standalone payment; nothing here
+    // reuses or captures the failed payment's funds. Absent for the plain
+    // (non-recovery) checkout flow, which sends no body.
+    const { originalPaymentId, originalOrderId } = req.body || {};
+    const notes = originalPaymentId
+      ? {
+          recovery: 'true',
+          original_payment_id: originalPaymentId,
+          ...(originalOrderId ? { original_order_id: originalOrderId } : {}),
+        }
+      : undefined;
+
     try {
       const rzp = await fetch('https://api.razorpay.com/v1/orders', {
         method: 'POST',
@@ -145,6 +163,7 @@ export function createApp({
           amount: ORDER_AMOUNT_PAISE,
           currency: 'INR',
           receipt: `rcpt_${req.requestId}`,
+          ...(notes ? { notes } : {}),
         }),
       });
       const order = await rzp.json();

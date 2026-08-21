@@ -115,6 +115,50 @@ describe('POST /create-order', () => {
     const res = await fetch(`${baseUrl}/create-order`, { method: 'POST' });
     expect(res.status).toBe(502);
   });
+
+  it('attaches original_payment_id / original_order_id notes for a recovery order', async () => {
+    process.env.RAZORPAY_KEY_ID = 'rzp_test_stub';
+    process.env.RAZORPAY_KEY_SECRET = 'stub_secret';
+    let capturedBody;
+    global.fetch = async (url, opts) => {
+      if (typeof url === 'string' && url.includes('api.razorpay.com')) {
+        capturedBody = JSON.parse(opts.body);
+        return { ok: true, json: async () => ({ id: 'order_recovered', amount: 149900, currency: 'INR' }) };
+      }
+      return originalFetch(url, opts);
+    };
+
+    const res = await fetch(`${baseUrl}/create-order`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ originalPaymentId: 'pay_failed_123', originalOrderId: 'order_failed_456' }),
+    });
+    expect(res.status).toBe(200);
+    // Still a standalone order -- same amount/currency as any other, the
+    // only difference is the notes metadata.
+    expect(capturedBody.notes).toEqual({
+      recovery: 'true',
+      original_payment_id: 'pay_failed_123',
+      original_order_id: 'order_failed_456',
+    });
+  });
+
+  it('omits notes entirely for the plain (non-recovery) checkout flow', async () => {
+    process.env.RAZORPAY_KEY_ID = 'rzp_test_stub';
+    process.env.RAZORPAY_KEY_SECRET = 'stub_secret';
+    let capturedBody;
+    global.fetch = async (url, opts) => {
+      if (typeof url === 'string' && url.includes('api.razorpay.com')) {
+        capturedBody = JSON.parse(opts.body);
+        return { ok: true, json: async () => ({ id: 'order_plain', amount: 149900, currency: 'INR' }) };
+      }
+      return originalFetch(url, opts);
+    };
+
+    const res = await fetch(`${baseUrl}/create-order`, { method: 'POST' });
+    expect(res.status).toBe(200);
+    expect(capturedBody.notes).toBeUndefined();
+  });
 });
 
 describe('POST /webhook/razorpay — signature enforcement over the raw body', () => {

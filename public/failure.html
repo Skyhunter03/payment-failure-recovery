@@ -251,7 +251,19 @@
         status.textContent = 'Creating a fresh order…';
         let order;
         try {
-          const r = await fetch('/create-order', { method: 'POST' });
+          // Send the failed payment's own id (and order id, if any) so the
+          // merchant can trace this fresh order back to what it's
+          // recovering -- Razorpay notes metadata, not a real link between
+          // orders. This is still a standalone order; nothing here reuses
+          // or captures the failed payment's funds.
+          const r = await fetch('/create-order', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              originalPaymentId: m.id,
+              originalOrderId: m.orderId || undefined,
+            }),
+          });
           order = await r.json();
           if (!r.ok) {
             status.textContent = `Could not start a new payment: ${order.error || r.status}`;
