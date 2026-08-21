@@ -69,9 +69,10 @@ The `CONFIRMING` state is deliberate. Most systems would guess; guessing wrong a
 - **HMAC webhook signature verification** — `src/webhook/signature.js`. `crypto.createHmac('sha256', secret)`, constant-time compare (not `===`), over the raw body, before any JSON parsing. Without this, anyone could POST a forged failure event.
 - **Event-level idempotency** — `src/db/`, `src/webhook/handler.js`. `INSERT ... ON CONFLICT DO NOTHING` on `processed_events`, keyed by event id. Razorpay retries deliveries; duplicates are acknowledged and ignored so the customer is never messaged twice.
 - **Follow-up suppression** — a scheduled recovery nudge is cancelled if the order is paid before it fires.
-- **Live customer-screen auto-update** — `public/failure.html`. The `CONFIRMING` screen re-fetches `/api/failure/:id` every 3 seconds and re-renders itself the moment the poller resolves it — no reload, no WebSockets/SSE, just a plain `setInterval`. A "Simulate bank confirmation (demo)" button on that screen fires the same poller endpoint on demand, for recordings that can't wait on the real interval.
+- **Live customer-screen auto-update** — `public/failure.html`. The `CONFIRMING` screen re-fetches `/api/failure/:id` every 3 seconds and re-renders itself the moment the poller resolves it — no reload, no WebSockets/SSE, just a plain `setInterval`. A "Simulate bank confirmation (demo only — production uses the background poller)" button on that screen fires the same poller endpoint on demand, for recordings that can't wait on the real interval.
+- **Repeatable CONFIRMING demo** — open **`/failure.html?demo=confirming`** and every visit mints its own fresh `CONFIRMING` row (`src/api/demoConfirming.js`, `POST /api/demo/fresh-confirming`) through the same real pipeline a webhook uses (`validateWebhook` → `handleEvent` → classify → decide → message → store) — just without the HTTP layer and signature, since there's no real bank behind a page load. The link never goes stale: reopen it as many times as you want, click the button, watch it upgrade live, reopen again for a brand-new one.
 - **Recovery button, not just recovery text** — `public/failure.html`. Clicking the recovery action creates a fresh Razorpay order (`/create-order`, never a capture of the failed payment's funds) and opens Checkout with every payment method available. `recovery.method` is surfaced only as button copy ("Pay again — UPI recommended" / "Try another payment method"), never a hard restriction — so it can never dead-end a customer on a method their account doesn't actually have enabled.
-- **Deployed** — Render (Node/Express) + Neon Postgres. 66 tests, CI green (test + secret-scan) on every push.
+- **Deployed** — Render (Node/Express) + Neon Postgres. 69 tests, CI green (test + secret-scan) on every push.
 
 ---
 
@@ -93,10 +94,11 @@ Explicitly not in this MVP. Designed, not implemented:
 | `GET` | `/api/failure/:id` | Customer-facing classification + message for a payment |
 | `POST` | `/create-order` | Creates a Razorpay order (order-based checkout) |
 | `POST` | `/api/simulate-failure` | Feeds a synthetic failure through the real pipeline (demo) |
+| `POST` | `/api/demo/fresh-confirming` | Mints a fresh, real `source: 'webhook'` `CONFIRMING` row through the real pipeline — what makes `/failure.html?demo=confirming` repeatable |
 | `POST` | `/api/demo/upgrade-confirming` | Runs the real poller against a real CONFIRMING row (Razorpay response simulated, since test mode won't produce a live RRN) |
 | `GET` | `/checkout` | Test checkout page |
 | `GET` | `/demo` | Demo hub linking every screen |
-| `GET` | `/failure.html` `/dashboard.html` | Customer screen and simulation dashboard (static) |
+| `GET` | `/failure.html` `/dashboard.html` | Customer screen and simulation dashboard (static). `/failure.html?demo=confirming` is the repeatable live CONFIRMING demo — see below |
 | `GET` | `/healthz` | Health check |
 
 ### Sample: `payment.failed` webhook (relevant fields)
@@ -140,7 +142,7 @@ Presence of `acquirer_data.rrn` is what moves the classification to `DEBITED_REV
 
 Everything below was re-derived directly from the code and the live deployment — not carried over from memory.
 
-**Tests:** 66 passing (`npm test` → 10 test files, 66 tests)
+**Tests:** 69 passing (`npm test` → 11 test files, 69 tests)
 
 **Routes**
 
@@ -151,6 +153,7 @@ Everything below was re-derived directly from the code and the live deployment �
 | `GET` | `/demo` |
 | `GET` | `/api/failure/:id` |
 | `POST` | `/api/simulate-failure` |
+| `POST` | `/api/demo/fresh-confirming` |
 | `POST` | `/api/demo/upgrade-confirming` |
 | `GET` | `/checkout` |
 | `POST` | `/create-order` |
@@ -162,6 +165,7 @@ Everything below was re-derived directly from the code and the live deployment �
 ```
 src/
 ├── api/
+│   ├── demoConfirming.js
 │   ├── demoUpgrade.js
 │   ├── failureLookup.js
 │   └── simulate.js
@@ -192,11 +196,11 @@ src/
 - **HMAC signature verification** — `src/webhook/signature.js`: `crypto.createHmac('sha256', secret)` + `crypto.timingSafeEqual` (constant-time), over the raw request body, before any JSON parsing.
 - **Event-level idempotency** — `src/db/index.js` `markEventSeen()`: `INSERT OR IGNORE` (SQLite) / `ON CONFLICT (event_id) DO NOTHING` (Postgres) on `processed_events`.
 - **Confirming poller** — `src/confirming-poller.js` `startConfirmingPoller()`: a real `setInterval`, wired into `src/index.js` at boot with `config.confirmingPollMs`.
-- **Confirming-page live auto-refresh + demo button** — `public/failure.html` `watchForUpdate()`: a plain `setInterval` (3s) re-fetches `/api/failure/:id` only while `state === 'CONFIRMING'`, re-renders on change, stops on resolution; the on-page "Simulate bank confirmation (demo)" button triggers the same real poller endpoint for a one-click live demo.
+- **Confirming-page live auto-refresh + repeatable demo** — `public/failure.html` `watchForUpdate()`: a plain `setInterval` (3s) re-fetches `/api/failure/:id` only while `state === 'CONFIRMING'`, re-renders on change, stops on resolution. Opening `/failure.html?demo=confirming` mints a brand-new `CONFIRMING` row on every visit (`src/api/demoConfirming.js`) so the link is reusable indefinitely, not a one-shot; its "Simulate bank confirmation (demo only — production uses the background poller)" button triggers the same real poller endpoint for a one-click live demo.
 - **Recovery button with method recommendation** — `public/failure.html` `buildRecoveryAction()`: creates a fresh order and opens Checkout with every method available, labelling the button per `recovery.method` without ever restricting which methods Checkout shows.
 
 **Live:** https://payment-failure-recovery.onrender.com
-**Commit:** `60f837c3459e05f206a284dd753e77375919e47f`
+**Commit:** `9f9d117a78bc4c6fb9a695cda95a0d802c5d4bb5`
 
 ---
 
@@ -205,7 +209,7 @@ src/
 ```bash
 npm install
 cp .env.example .env      # test-mode Razorpay keys only
-npm test                  # 66 tests
+npm test                  # 69 tests
 npm start
 ```
 
