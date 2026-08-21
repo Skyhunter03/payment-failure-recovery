@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: payment-failure-recovery
+    runtime: node
+    plan: free
+    branch: main
+    buildCommand: npm ci
+    startCommand: npm start
+    healthCheckPath: /healthz
+    envVars:
+      # Secret values are set in the Render dashboard, never here.
+      - key: DATABASE_URL
+        sync: false
+      - key: RAZORPAY_WEBHOOK_SECRET
+        sync: false
+      - key: NODE_ENV
+        value: production

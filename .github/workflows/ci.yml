@@ -17,3 +17,30 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm test
+
+  secret-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fail if .env is tracked
+        run: |
+          if git ls-files | grep -qx '\.env'; then
+            echo "::error::.env must never be committed"
+            exit 1
+          fi
+      - name: Fail on a live Razorpay key or another hard-secret pattern
+        run: |
+          # rzp_live_ = a LIVE Razorpay key -- this project is test-mode only, never acceptable.
+          # rzp_test_ is a public test key id and is fine (see test-checkout.html).
+          # PEM headers / AWS keys are generic hard-secret formats.
+          if git grep -nE 'rzp_live_[A-Za-z0-9]+|-----BEGIN (RSA |OPENSSH |EC )?PRIVATE KEY-----|AKIA[0-9A-Z]{16}' -- . ':!node_modules'; then
+            echo "::error::possible live secret found in tracked files"
+            exit 1
+          fi
+      - name: Fail on a DB connection string with embedded credentials
+        run: |
+          # .env.example intentionally documents the shape with a fake user:password.
+          if git grep -nE '(postgres|postgresql|mysql)://[^:[:space:]/]+:[^@[:space:]/]+@' -- . ':!.env.example'; then
+            echo "::error::a database URL with embedded credentials was found committed"
+            exit 1
+          fi
