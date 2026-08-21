@@ -221,6 +221,52 @@ export async function listFailures() {
   return result.rows;
 }
 
+// Failures still CONFIRMING, from a real webhook (not a demo_ row — those
+// have no real Razorpay payment behind them to poll), created at or after
+// cutoffIso. Feeds the confirming-poller's recheck loop.
+export async function confirmingFailuresToRecheck(cutoffIso) {
+  requireBackend();
+  if (backend === 'sqlite') {
+    return sqliteDb
+      .prepare(
+        `SELECT payment_id, reason, error_step, acquirer_data_json, amount_paise, created_at
+         FROM failures
+         WHERE money_state = 'CONFIRMING' AND source = 'webhook' AND created_at >= ?`
+      )
+      .all(cutoffIso);
+  }
+  const result = await pgPool.query(
+    `SELECT payment_id, reason, error_step, acquirer_data_json, amount_paise, created_at
+     FROM failures
+     WHERE money_state = 'CONFIRMING' AND source = 'webhook' AND created_at >= $1`,
+    [cutoffIso]
+  );
+  return result.rows;
+}
+
+// Corrects a stored failure's classification once new information arrives
+// (the confirming-poller, after re-querying Razorpay). Deliberately NOT
+// saveFailure's idempotency-guarded insert — this is a real UPDATE of an
+// existing row's reason/step/reference/state, not a first-write-wins insert,
+// and it never re-triggers delivery or follow-up scheduling.
+export async function upgradeFailureClassification(paymentId, { reason, errorStep, acquirerDataJson, moneyState }) {
+  requireBackend();
+  if (backend === 'sqlite') {
+    sqliteDb
+      .prepare(
+        `UPDATE failures SET reason = ?, error_step = ?, acquirer_data_json = ?, money_state = ?
+         WHERE payment_id = ?`
+      )
+      .run(reason, errorStep, acquirerDataJson, moneyState, paymentId);
+    return;
+  }
+  await pgPool.query(
+    `UPDATE failures SET reason = $1, error_step = $2, acquirer_data_json = $3, money_state = $4
+     WHERE payment_id = $5`,
+    [reason, errorStep, acquirerDataJson, moneyState, paymentId]
+  );
+}
+
 // --- Follow-ups ---------------------------------------------------------------
 
 export async function scheduleFollowUp({ orderId, paymentId, kind, dueAtIso, nowIso }) {

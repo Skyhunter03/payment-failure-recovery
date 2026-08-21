@@ -62,6 +62,13 @@ export const config = {
   // Cloudflare (their edge) then Render's own load balancer = 2 hops.
   // https://render.com/articles/how-render-handles-ddos-attacks
   trustProxyHops: Number(process.env.TRUST_PROXY_HOPS || 2),
+  // Background poller that upgrades CONFIRMING failures once Razorpay's own
+  // Payments API has a more definite answer. Needs RAZORPAY_KEY_ID/SECRET
+  // (same as /create-order) — a missing key just makes each poll a no-op per
+  // row, logged, not a crash. 5 min default: payment resolution isn't
+  // real-time-urgent, and it's a courtesy against hammering Razorpay's API.
+  confirmingPoller: process.env.CONFIRMING_POLLER !== 'false',
+  confirmingPollMs: Number(process.env.CONFIRMING_POLL_MS || 5 * 60_000),
 };
 
 export function getWebhookSecret() {
