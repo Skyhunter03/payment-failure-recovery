@@ -91,6 +91,9 @@
   .recovery-action:disabled { opacity: 0.6; cursor: default; }
   .recovery-status { font-size: 12.5px; color: var(--text-secondary); margin-top: 8px; }
   .recovery-hint { font-size: 12px; color: var(--text-muted); margin-top: 6px; }
+  .poll-indicator { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--text-muted); margin: -8px 0 20px; }
+  .poll-dot { width: 6px; height: 6px; border-radius: 999px; background: var(--status-warning); animation: poll-pulse 1.2s ease-in-out infinite; }
+  @keyframes poll-pulse { 0%, 100% { opacity: 0.25; } 50% { opacity: 1; } }
   .err { color: #d03b3b; }
   .ref { font-family: "IBM Plex Mono", monospace; }
 </style>
@@ -121,6 +124,12 @@
 
       app.appendChild(el('h1', { text: m.headline }));
       app.appendChild(el('div', { class: 'amount', text: `Amount: ${m.amount}` }));
+      if (m.state === 'CONFIRMING') {
+        app.appendChild(el('div', { class: 'poll-indicator' }, [
+          el('span', { class: 'poll-dot' }),
+          el('span', { text: 'Watching for a status update from your bank…' }),
+        ]));
+      }
 
       const qa = el('dl', { class: 'qa' });
       const rows = [
@@ -258,6 +267,34 @@
     const RETRY_INTERVAL_MS = 700;
     const MAX_RETRIES = 8; // ~5.6s total
 
+    // CONFIRMING is the one state that resolves itself: the background
+    // confirming-poller (src/confirming-poller.js) rechecks Razorpay and
+    // upgrades the stored row on its own. This just watches for that --
+    // plain re-fetch + re-render, nothing pushed from the server. Stops the
+    // moment the state leaves CONFIRMING, or if the tab is hidden (no point
+    // polling a screen nobody's looking at).
+    const POLL_INTERVAL_MS = 3000;
+    let pollTimer = null;
+
+    function watchForUpdate(id) {
+      if (pollTimer) clearInterval(pollTimer);
+      pollTimer = setInterval(async () => {
+        if (document.hidden) return;
+        try {
+          const res = await fetch(`/api/failure/${encodeURIComponent(id)}`);
+          if (!res.ok) return; // transient hiccup -- next tick retries, screen stays as-is
+          const fresh = await res.json();
+          if (fresh.state !== 'CONFIRMING') {
+            clearInterval(pollTimer);
+            pollTimer = null;
+            render(fresh);
+          }
+        } catch (e) {
+          // Same as above: leave the last good render on screen and retry.
+        }
+      }, POLL_INTERVAL_MS);
+    }
+
     async function load() {
       const params = new URLSearchParams(location.search);
       const id = params.get('id');
@@ -272,7 +309,12 @@
       for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
         try {
           const res = await fetch(`/api/failure/${encodeURIComponent(id)}`);
-          if (res.ok) { render(await res.json()); return; }
+          if (res.ok) {
+            const m = await res.json();
+            render(m);
+            if (m.state === 'CONFIRMING') watchForUpdate(id);
+            return;
+          }
           if (res.status === 404 && fromCheckout && attempt < MAX_RETRIES) {
             app.innerHTML = '';
             app.appendChild(el('p', { class: 'err', text: `Waiting for the webhook to arrive… (${attempt + 1}/${MAX_RETRIES})` }));
