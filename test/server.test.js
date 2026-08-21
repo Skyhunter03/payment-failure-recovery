@@ -1,5 +1,5 @@
 // HTTP-level tests: real requests against the Express app (routes, signature, rate limit).
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
 import crypto from 'node:crypto';
 import * as db from '../src/db/index.js';
 import { createApp } from '../src/server.js';
@@ -56,6 +56,64 @@ describe('GET /demo', () => {
     const res = await fetch(`${baseUrl}/demo`);
     expect(res.status).toBe(200);
     expect(res.headers.get('content-type')).toMatch(/html/);
+  });
+});
+
+// The recovery-action button on failure.html depends on this route to open a
+// FRESH order (never a capture of the failed payment). No prior coverage.
+describe('POST /create-order', () => {
+  const originalFetch = global.fetch;
+  afterEach(() => {
+    global.fetch = originalFetch;
+    delete process.env.RAZORPAY_KEY_ID;
+    delete process.env.RAZORPAY_KEY_SECRET;
+  });
+
+  it('creates a real-shaped order via Basic auth, without hitting the network', async () => {
+    process.env.RAZORPAY_KEY_ID = 'rzp_test_stub';
+    process.env.RAZORPAY_KEY_SECRET = 'stub_secret';
+    global.fetch = async (url, opts) => {
+      // Only intercept the server's outbound call to Razorpay -- this test's
+      // own call to the local server (below) must reach the real fetch.
+      if (typeof url === 'string' && url.includes('api.razorpay.com')) {
+        expect(url).toBe('https://api.razorpay.com/v1/orders');
+        expect(opts.headers.Authorization).toBe(
+          `Basic ${Buffer.from('rzp_test_stub:stub_secret').toString('base64')}`
+        );
+        return { ok: true, json: async () => ({ id: 'order_stub123', amount: 149900, currency: 'INR' }) };
+      }
+      return originalFetch(url, opts);
+    };
+
+    const res = await fetch(`${baseUrl}/create-order`, { method: 'POST' });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      orderId: 'order_stub123',
+      amount: 149900,
+      currency: 'INR',
+      keyId: 'rzp_test_stub',
+    });
+  });
+
+  it('returns 500 with a clear message when keys are not configured', async () => {
+    delete process.env.RAZORPAY_KEY_ID;
+    delete process.env.RAZORPAY_KEY_SECRET;
+    const res = await fetch(`${baseUrl}/create-order`, { method: 'POST' });
+    expect(res.status).toBe(500);
+    expect((await res.json()).error).toMatch(/RAZORPAY_KEY_ID/);
+  });
+
+  it('returns 502 when Razorpay itself rejects the order request', async () => {
+    process.env.RAZORPAY_KEY_ID = 'rzp_test_stub';
+    process.env.RAZORPAY_KEY_SECRET = 'stub_secret';
+    global.fetch = async (url, opts) => {
+      if (typeof url === 'string' && url.includes('api.razorpay.com')) {
+        return { ok: false, status: 401, json: async () => ({ error: { description: 'bad key' } }) };
+      }
+      return originalFetch(url, opts);
+    };
+    const res = await fetch(`${baseUrl}/create-order`, { method: 'POST' });
+    expect(res.status).toBe(502);
   });
 });
 

@@ -82,7 +82,14 @@
     margin-top: 24px; padding: 14px 16px; border-radius: 10px;
     background: var(--recovery-bg); border: 1px solid var(--recovery-border);
   }
-  .recovery .rationale { font-size: 13.5px; }
+  .recovery .rationale { font-size: 13.5px; margin-bottom: 12px; }
+  .recovery-action {
+    font-family: "Archivo", sans-serif; font-weight: 700; font-size: 14px;
+    background: var(--lane-silent); color: #fff; border: none; border-radius: 8px;
+    padding: 10px 16px; cursor: pointer; width: 100%;
+  }
+  .recovery-action:disabled { opacity: 0.6; cursor: default; }
+  .recovery-status { font-size: 12.5px; color: var(--text-secondary); margin-top: 8px; }
   .err { color: #d03b3b; }
   .ref { font-family: "IBM Plex Mono", monospace; }
 </style>
@@ -90,6 +97,7 @@
 <body>
   <div id="app">Loading…</div>
 
+  <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
   <script>
     const STATUS_MARK = { done: '✓', active: '●', pending: '○', unknown: '?', skipped: '–' };
 
@@ -144,7 +152,97 @@
       const rec = el('div', { class: 'recovery' }, [
         el('div', { class: 'rationale', text: m.recovery.rationale }),
       ]);
+      rec.appendChild(buildRecoveryAction(m));
       app.appendChild(rec);
+    }
+
+    // Turns the recovery engine's decision into an action: a FRESH order via
+    // /create-order (never a capture of the failed payment's funds -- that
+    // money was never captured in the first place, and auto-reverses on its
+    // own), then Checkout re-opened for it. Reads ONLY m.recovery (method,
+    // switchMethod) -- nothing here re-decides anything recovery.js already
+    // decided.
+    //
+    // m.recovery.method is 'upi' or 'same' (recovery.js never returns a bare
+    // 'card' as a target). 'upi' -> restrict Checkout to UPI, matching the
+    // engine's explicit instruction. 'same' means "retry whatever method the
+    // customer used" -- but the ORIGINAL method is never persisted (see
+    // failureLookup.js: `method: null`), so at read time there is no stored
+    // value to restrict to. Honest handling: offer normal, unrestricted
+    // Checkout rather than guess or silently default to a specific rail.
+    function buildRecoveryAction(m) {
+      const label = m.recovery.method === 'upi' ? 'Pay again with UPI' : 'Retry payment';
+      const btn = el('button', { class: 'recovery-action', type: 'button', text: label });
+      const status = el('div', { class: 'recovery-status' });
+
+      btn.addEventListener('click', async function () {
+        btn.disabled = true;
+        status.textContent = 'Creating a fresh order…';
+        let order;
+        try {
+          const r = await fetch('/create-order', { method: 'POST' });
+          order = await r.json();
+          if (!r.ok) {
+            status.textContent = `Could not start a new payment: ${order.error || r.status}`;
+            btn.disabled = false;
+            return;
+          }
+        } catch (e) {
+          status.textContent = `Could not reach the service: ${e.message}`;
+          btn.disabled = false;
+          return;
+        }
+        status.textContent = '';
+
+        const options = {
+          key: order.keyId,
+          order_id: order.orderId,
+          amount: order.amount,
+          currency: order.currency,
+          name: 'Test Store',
+          description: 'Test Product — ₹1,499 (fresh payment, not a retry of the failed one)',
+          handler: function () {
+            status.textContent = '✓ Payment successful.';
+          },
+          modal: {
+            ondismiss: function () { btn.disabled = false; },
+          },
+          theme: { color: '#3399cc' },
+        };
+        // Only when the engine explicitly said UPI: restrict Checkout to it,
+        // Razorpay's own documented "show only one method" config. For
+        // method:'same' this is omitted entirely -- normal Checkout, every
+        // method available, per the honesty note above.
+        if (m.recovery.method === 'upi') {
+          options.config = {
+            display: {
+              blocks: {
+                upi: { name: 'Pay via UPI', instruments: [{ method: 'upi' }] },
+              },
+              sequence: ['block.upi'],
+              preferences: { show_default_blocks: false },
+            },
+          };
+        }
+
+        const rzp = new Razorpay(options);
+        rzp.on('payment.failed', function (response) {
+          console.log('FAILED (payment.failed) response:', response);
+          const paymentId = response.error && response.error.metadata && response.error.metadata.payment_id;
+          btn.disabled = false;
+          if (paymentId) {
+            status.textContent = 'That attempt failed too — loading its status…';
+            setTimeout(function () {
+              location.href = '/failure.html?id=' + encodeURIComponent(paymentId) + '&from=checkout';
+            }, 600);
+          } else {
+            status.textContent = 'That attempt failed.';
+          }
+        });
+        rzp.open();
+      });
+
+      return el('div', {}, [btn, status]);
     }
 
     // Real webhook delivery is async and can trail the browser landing here
