@@ -6,11 +6,11 @@ import { rootLog } from './logger.js';
 // before they come due. This proves suppression: pay, and the nudge vanishes.
 
 export function startFollowUpTicker({ intervalMs }) {
-  const tick = () => {
+  const tick = async () => {
     const nowIso = new Date().toISOString();
     let due;
     try {
-      due = db.dueFollowUps(nowIso);
+      due = await db.duePendingFollowUps(nowIso);
     } catch (err) {
       rootLog.error('followup_tick_failed', { error: String(err) });
       return;
@@ -23,7 +23,11 @@ export function startFollowUpTicker({ intervalMs }) {
         kind: f.kind,
         channel: 'console-only',
       });
-      db.markFollowUpSent(f.id);
+      try {
+        await db.markFollowUpSent(f.id);
+      } catch (err) {
+        rootLog.error('followup_mark_sent_failed', { followUpId: f.id, error: String(err) });
+      }
     }
   };
 

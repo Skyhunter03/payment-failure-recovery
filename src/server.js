@@ -1,10 +1,21 @@
 import express from 'express';
 import crypto from 'node:crypto';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { makeLogger } from './logger.js';
 import { verifySignature } from './webhook/signature.js';
 import { validateWebhook } from './webhook/validate.js';
 import { handleEvent } from './webhook/handler.js';
 import { makeConsoleDeliver } from './render.js';
+import { getRazorpayKeys } from './config.js';
+import * as db from './db/index.js';
+import { messageFromFailureRow } from './api/failureLookup.js';
+import { simulateFailure } from './api/simulate.js';
+
+const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const checkoutPage = path.join(rootDir, 'test-checkout.html');
+const publicDir = path.join(rootDir, 'public');
+const ORDER_AMOUNT_PAISE = 149900; // ₹1,499.00, the single test product
 
 // Builds the Express app. `getSecret` is injected so tests can supply their own
 // secret without touching env.
@@ -24,6 +35,77 @@ export function createApp({ getSecret }) {
   // A tiny JSON body parser ONLY for non-webhook routes.
   app.get('/healthz', (_req, res) => res.json({ ok: true }));
 
+  // Static demo UI: public/failure.html (live customer screen) and
+  // public/showcase/ (static three-state page for the demo video).
+  app.use(express.static(publicDir));
+
+  // The live customer screen's data source. Works for both a real webhook
+  // failure (source: 'webhook') and a demo one (source: 'demo', created via
+  // POST /api/simulate-failure below) — same table, same lookup.
+  app.get('/api/failure/:id', async (req, res) => {
+    const row = await db.getFailure(req.params.id);
+    if (!row) return res.status(404).json({ error: 'not found' });
+    res.json(messageFromFailureRow(row));
+  });
+
+  // Creates a demo failure (source: 'demo') so /api/failure/:id and
+  // failure.html can be exercised without a real webhook. type is one of
+  // 'not_debited' | 'debited' | 'confirming'.
+  app.post('/api/simulate-failure', express.json(), async (req, res) => {
+    try {
+      const result = await simulateFailure(req.body || {});
+      res.status(201).json(result);
+    } catch (err) {
+      if (err && err.status) return res.status(err.status).json({ error: err.error });
+      req.log.error('simulate_failure_threw', { error: String(err) });
+      res.status(500).json({ error: 'internal error' });
+    }
+  });
+
+  // ── Test-mode checkout helpers (not part of the webhook service) ──────────
+  // Serve the checkout page from here so its fetch('/create-order') is
+  // same-origin (a file:// page would hit CORS). Open http://localhost:PORT/checkout.
+  app.get('/checkout', (_req, res) => res.sendFile(checkoutPage));
+
+  // Create a real test-mode order so the failure webhook carries an order_id
+  // (validate.js requires it). Uses the test API keys via the Razorpay Orders API.
+  app.post('/create-order', express.json(), async (req, res) => {
+    let keyId, keySecret;
+    try {
+      ({ keyId, keySecret } = getRazorpayKeys());
+    } catch {
+      return res.status(500).json({
+        error: 'Set RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET in .env to use /create-order.',
+      });
+    }
+    const auth = Buffer.from(`${keyId}:${keySecret}`).toString('base64');
+    try {
+      const rzp = await fetch('https://api.razorpay.com/v1/orders', {
+        method: 'POST',
+        headers: { Authorization: `Basic ${auth}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          amount: ORDER_AMOUNT_PAISE,
+          currency: 'INR',
+          receipt: `rcpt_${req.requestId}`,
+        }),
+      });
+      const order = await rzp.json();
+      if (!rzp.ok) {
+        req.log.warn('order_create_failed', { status: rzp.status });
+        return res.status(502).json({ error: 'order create failed', detail: order });
+      }
+      res.json({
+        orderId: order.id,
+        amount: order.amount,
+        currency: order.currency,
+        keyId,
+      });
+    } catch (err) {
+      req.log.error('order_create_threw', { error: String(err) });
+      res.status(502).json({ error: 'could not reach Razorpay' });
+    }
+  });
+
   // THE WEBHOOK ROUTE.
   //
   // express.raw() captures the exact bytes. This MUST come before any JSON
@@ -32,7 +114,7 @@ export function createApp({ getSecret }) {
   app.post(
     '/webhook/razorpay',
     express.raw({ type: '*/*' }),
-    (req, res) => {
+    async (req, res) => {
       const log = req.log;
       const rawBody = req.body; // Buffer, thanks to express.raw
       const signature = req.get('x-razorpay-signature');
@@ -74,7 +156,7 @@ export function createApp({ getSecret }) {
       // IMPORTANT: any duplicate or ignorable event returns 200 so Razorpay
       // stops retrying. Only genuine auth/shape errors are non-2xx.
       try {
-        const result = handleEvent({
+        const result = await handleEvent({
           eventId: req.requestId,
           validated: validated.value,
           logger: log,

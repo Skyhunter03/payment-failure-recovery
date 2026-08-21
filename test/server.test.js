@@ -9,7 +9,7 @@ let server;
 let baseUrl;
 
 beforeAll(async () => {
-  db.initDb(':memory:');
+  await db.initDb(':memory:');
   const app = createApp({ getSecret: () => SECRET });
   await new Promise((resolve) => {
     server = app.listen(0, () => {
@@ -22,13 +22,13 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await new Promise((r) => server.close(r));
-  db.closeDb();
+  await db.closeDb();
 });
 
 // Fresh DB per test so idempotency ledgers don't leak between cases.
-beforeEach(() => {
-  db.closeDb();
-  db.initDb(':memory:');
+beforeEach(async () => {
+  await db.closeDb();
+  await db.initDb(':memory:');
 });
 
 function post(raw, { signature, eventId }) {

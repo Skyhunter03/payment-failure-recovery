@@ -7,8 +7,16 @@ import { rootLog } from './logger.js';
 // Fail fast if the secret is missing — the whole thing is worthless unsigned.
 const secret = getWebhookSecret();
 
-initDb(config.dbPath);
-rootLog.info('db_ready', { dbPath: config.dbPath });
+// Postgres (Neon) when DATABASE_URL is set — production. Falls back to
+// better-sqlite3 otherwise — local dev with no network dependency.
+const databaseUrl = process.env.DATABASE_URL;
+if (databaseUrl) {
+  await initDb({ databaseUrl });
+  rootLog.info('db_ready', { backend: 'postgres' });
+} else {
+  await initDb(config.dbPath);
+  rootLog.info('db_ready', { backend: 'sqlite', dbPath: config.dbPath });
+}
 
 const app = createApp({ getSecret: () => secret });
 

@@ -8,12 +8,15 @@ import * as db from '../db/index.js';
 //
 // `deliver` is how a message reaches the customer. Here it only logs. There is
 // deliberately no code path that contacts a real person.
+//
+// Async throughout (db.js call sites) since the DB may be Postgres over the
+// network — see src/db/index.js.
 
-export function handleEvent({ eventId, validated, logger, now, deliver }) {
+export async function handleEvent({ eventId, validated, logger, now, deliver }) {
   const nowIso = now.toISOString();
 
   // --- Idempotency: claim the event id first. Duplicate => 200, no work. ---
-  const firstTime = db.claimEvent(eventId, validated.event, nowIso);
+  const firstTime = await db.markEventSeen(eventId, validated.event, nowIso);
   if (!firstTime) {
     logger.info('duplicate_event_ignored', {
       eventId,
@@ -33,19 +36,31 @@ export function handleEvent({ eventId, validated, logger, now, deliver }) {
   return handleFailed({ validated, logger, now, nowIso, deliver });
 }
 
-function handleFailed({ validated, logger, now, nowIso, deliver }) {
+async function handleFailed({ validated, logger, now, nowIso, deliver }) {
   const entity = validated.entity;
   const orderId = entity.order_id;
   const paymentId = entity.id;
 
-  // Second idempotency guard: never message the same payment twice, even if a
-  // fresh event id slipped through (e.g. Razorpay re-emits with a new id).
-  const newFailure = db.recordFailure({
+  // Classify first (cheap, pure) so the ONE insert below carries the real
+  // result — avoids a "placeholder, then update" pattern where the update
+  // would silently be a no-op (ON CONFLICT DO NOTHING on the same PK) and
+  // money_state would never leave a placeholder value.
+  const classification = classifyMoneyState(entity);
+  const recovery = decideRecovery(entity.error_reason, {
+    originalMethod: entity.method,
+  });
+
+  // Idempotency guard: never message the same payment twice, even if a fresh
+  // event id slipped through (e.g. Razorpay re-emits with a new id).
+  const newFailure = await db.saveFailure({
     paymentId,
     orderId,
     reason: entity.error_reason ?? null,
-    moneyState: 'pending', // updated below via the classification result
+    errorStep: entity.error_step ?? null,
+    acquirerDataJson: JSON.stringify(entity.acquirer_data ?? {}),
+    moneyState: classification.state,
     amountPaise: entity.amount ?? null,
+    source: 'webhook',
     nowIso,
   });
   if (!newFailure) {
@@ -53,10 +68,6 @@ function handleFailed({ validated, logger, now, nowIso, deliver }) {
     return { status: 200, body: { ok: true, duplicatePayment: true } };
   }
 
-  const classification = classifyMoneyState(entity);
-  const recovery = decideRecovery(entity.error_reason, {
-    originalMethod: entity.method,
-  });
   const message = buildCustomerMessage({
     classification,
     recovery,
@@ -64,20 +75,10 @@ function handleFailed({ validated, logger, now, nowIso, deliver }) {
     eventDate: now,
   });
 
-  // Persist the true money state now that we know it.
-  db.recordFailure({
-    paymentId,
-    orderId,
-    reason: entity.error_reason ?? null,
-    moneyState: classification.state,
-    amountPaise: entity.amount ?? null,
-    nowIso,
-  }); // no-op insert; state is informational in logs below
-
   // Schedule follow-ups (nothing is sent yet — the ticker will log them).
   for (const f of recovery.followUps) {
     const dueAt = new Date(now.getTime() + f.atMinutes * 60_000);
-    db.scheduleFollowUp({
+    await db.scheduleFollowUp({
       orderId,
       paymentId,
       kind: f.kind,
@@ -110,7 +111,7 @@ function handleFailed({ validated, logger, now, nowIso, deliver }) {
   };
 }
 
-function handleCaptured({ validated, logger, nowIso }) {
+async function handleCaptured({ validated, logger, nowIso }) {
   const entity = validated.entity;
   const orderId = entity.order_id;
   if (!orderId) {
@@ -120,7 +121,7 @@ function handleCaptured({ validated, logger, nowIso }) {
 
   // The customer already paid. Cancel any pending nudges for this order —
   // chasing someone who has paid is how this feature gets hated.
-  const cancelled = db.cancelFollowUpsForOrder(orderId);
+  const cancelled = await db.markOrderResolved(orderId, nowIso);
   logger.info('captured_suppressed_followups', {
     orderId,
     paymentId: entity.id,

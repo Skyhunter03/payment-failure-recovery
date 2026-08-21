@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Where's my money? — payment status</title>
+<style>
+  :root { color-scheme: light dark; }
+  body {
+    font-family: system-ui, -apple-system, sans-serif;
+    max-width: 560px; margin: 32px auto; padding: 0 16px;
+    line-height: 1.5;
+  }
+  .badge {
+    display: inline-block; font-size: 12px; font-weight: 600; letter-spacing: 0.04em;
+    padding: 2px 8px; border-radius: 999px; margin-bottom: 12px;
+    background: #fef3c7; color: #92400e;
+  }
+  h1 { font-size: 22px; margin: 0 0 20px; }
+  .amount { font-size: 15px; color: #666; margin-top: -14px; margin-bottom: 20px; }
+  .qa { margin-bottom: 18px; }
+  .qa dt { font-weight: 600; font-size: 13px; color: #666; margin-bottom: 2px; }
+  .qa dd { margin: 0; }
+  .tracker { margin: 24px 0; padding: 0; list-style: none; }
+  .tracker li { display: flex; gap: 10px; padding: 8px 0; align-items: flex-start; }
+  .mark {
+    flex: none; width: 22px; height: 22px; border-radius: 999px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 700; color: #fff;
+  }
+  .mark.done { background: #16a34a; }
+  .mark.active { background: #2563eb; }
+  .mark.pending { background: #9ca3af; }
+  .mark.unknown { background: #d97706; }
+  .mark.skipped { background: #d1d5db; color: #6b7280; }
+  .tracker .label { font-weight: 600; }
+  .tracker .note { font-size: 13px; color: #666; }
+  .recovery {
+    margin-top: 24px; padding: 14px 16px; border-radius: 10px;
+    background: #eff6ff; border: 1px solid #bfdbfe;
+  }
+  .recovery .rationale { font-size: 14px; }
+  .err { color: #b91c1c; }
+  .ref { font-family: ui-monospace, monospace; }
+</style>
+</head>
+<body>
+  <div id="app">Loading…</div>
+
+  <script>
+    const STATUS_MARK = { done: '✓', active: '●', pending: '○', unknown: '?', skipped: '–' };
+
+    function el(tag, attrs = {}, children = []) {
+      const e = document.createElement(tag);
+      for (const [k, v] of Object.entries(attrs)) {
+        if (k === 'text') e.textContent = v; else e.setAttribute(k, v);
+      }
+      for (const c of [].concat(children)) e.appendChild(c);
+      return e;
+    }
+
+    function render(m) {
+      const app = document.getElementById('app');
+      app.innerHTML = '';
+
+      if (m.source === 'demo') {
+        app.appendChild(el('div', { class: 'badge', text: 'SIMULATED — DEMO DATA' }));
+      }
+
+      app.appendChild(el('h1', { text: m.headline }));
+      app.appendChild(el('div', { class: 'amount', text: `Amount: ${m.amount}` }));
+
+      const qa = el('dl', { class: 'qa' });
+      const rows = [
+        ['Did my money leave?', m.questions.didMyMoneyLeave],
+        ['Is it coming back?', m.questions.isItComingBack],
+        ['Should I pay again right now?', m.questions.shouldIPayAgainNow],
+        ['How do I still get what I wanted?', m.questions.howDoIStillGetWhatIWanted],
+      ];
+      for (const [q, a] of rows) {
+        qa.appendChild(el('dt', { text: q }));
+        qa.appendChild(el('dd', { text: a }));
+      }
+      app.appendChild(qa);
+
+      const tracker = el('ul', { class: 'tracker' });
+      for (const step of m.tracker) {
+        const mark = el('span', { class: `mark ${step.status}`, text: STATUS_MARK[step.status] || '?' });
+        const text = el('div', {}, [
+          el('div', { class: 'label', text: step.label }),
+          el('div', { class: 'note', text: step.note }),
+        ]);
+        tracker.appendChild(el('li', {}, [mark, text]));
+      }
+      app.appendChild(tracker);
+
+      if (m.reference) {
+        app.appendChild(el('p', { text: 'Reference: ' }, [el('span', { class: 'ref', text: m.reference })]));
+      }
+
+      const rec = el('div', { class: 'recovery' }, [
+        el('div', { class: 'rationale', text: m.recovery.rationale }),
+      ]);
+      app.appendChild(rec);
+    }
+
+    async function load() {
+      const id = new URLSearchParams(location.search).get('id');
+      const app = document.getElementById('app');
+      if (!id) {
+        app.innerHTML = '';
+        app.appendChild(el('p', { class: 'err', text: 'No ?id= given. Open this page as /failure.html?id=<payment-or-demo-id>.' }));
+        return;
+      }
+      try {
+        const res = await fetch(`/api/failure/${encodeURIComponent(id)}`);
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          app.innerHTML = '';
+          app.appendChild(el('p', { class: 'err', text: `${res.status}: ${body.error || 'failed to load'}` }));
+          return;
+        }
+        render(await res.json());
+      } catch (e) {
+        app.innerHTML = '';
+        app.appendChild(el('p', { class: 'err', text: `Could not reach the service: ${e.message}` }));
+      }
+    }
+    load();
+  </script>
+</body>
+</html>

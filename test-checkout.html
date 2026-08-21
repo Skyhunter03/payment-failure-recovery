@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Test Checkout — ₹1,499</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 640px; margin: 40px auto; padding: 0 16px; }
+    button { font-size: 18px; padding: 12px 24px; cursor: pointer; }
+    pre { background: #111; color: #0f0; padding: 16px; border-radius: 8px;
+          white-space: pre-wrap; word-break: break-word; margin-top: 24px; }
+    .muted { color: #666; font-size: 14px; }
+  </style>
+</head>
+<body>
+  <h1>Test Store — one product</h1>
+  <p><strong>Test Product</strong> — ₹1,499.00</p>
+  <button id="pay">Pay ₹1,499</button>
+  <p class="muted">Razorpay <strong>test mode</strong>. Success and failure both log the full
+    response object below and to the browser console.</p>
+  <pre id="log">(response objects will appear here)</pre>
+
+  <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+  <script>
+    // ── PASTE YOUR TEST KEY ID HERE (looks like rzp_test_XXXXXXXXXXXX) ──
+    const RAZORPAY_KEY_ID = 'rzp_test_TSIum28Cd0QS5Q';
+
+    const logEl = document.getElementById('log');
+    let firstLog = true;
+    function log(label, obj) {
+      console.log(label, obj);
+      if (firstLog) { logEl.textContent = ''; firstLog = false; }
+      logEl.textContent += label + '\n' + JSON.stringify(obj, null, 2) + '\n\n';
+    }
+
+    document.getElementById('pay').addEventListener('click', function () {
+      const rzp = new Razorpay({
+        key: RAZORPAY_KEY_ID,
+        amount: 149900,        // paise -> ₹1,499.00
+        currency: 'INR',
+        name: 'Test Store',
+        description: 'Test Product — ₹1,499',
+        // No order_id: client-only flow, key_id alone (no key_secret needed).
+        // A payment.failed from this page has no order_id, so the webhook
+        // service's validate.js will 400 it — this page is for exercising
+        // Checkout + logging the response object, not the full webhook path.
+        handler: function (response) {
+          log('SUCCESS (handler) response:', response);
+        },
+        modal: {
+          ondismiss: function () { log('DISMISSED (modal closed by user):', {}); }
+        },
+        theme: { color: '#3399cc' }
+      });
+      // Full failure object: response.error has code, description, reason,
+      // source, step, and metadata (payment_id, order_id).
+      rzp.on('payment.failed', function (response) {
+        log('FAILED (payment.failed) response:', response);
+      });
+      rzp.open();
+    });
+  </script>
+</body>
+</html>

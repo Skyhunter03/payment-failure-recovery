@@ -54,3 +54,13 @@ export const config = {
 export function getWebhookSecret() {
   return required('RAZORPAY_WEBHOOK_SECRET');
 }
+
+// Test-mode API credentials, used only by the /create-order test helper so the
+// checkout page can open Checkout with a real order_id. Not needed to run the
+// webhook service itself.
+export function getRazorpayKeys() {
+  return {
+    keyId: required('RAZORPAY_KEY_ID'),
+    keySecret: required('RAZORPAY_KEY_SECRET'),
+  };
+}
