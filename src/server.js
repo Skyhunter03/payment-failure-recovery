@@ -49,6 +49,11 @@ export function createApp({
   // A tiny JSON body parser ONLY for non-webhook routes.
   app.get('/healthz', (_req, res) => res.json({ ok: true }));
 
+  // No page is mounted at bare "/" -- redirect it to /checkout so opening the
+  // root URL isn't a dead end. Before express.static so it wins over any
+  // future public/index.html.
+  app.get('/', (_req, res) => res.redirect('/checkout'));
+
   // Static demo UI: public/failure.html (live customer screen) and
   // public/showcase/ (static three-state page for the demo video).
   app.use(express.static(publicDir));

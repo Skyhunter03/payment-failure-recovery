@@ -42,6 +42,14 @@ function sign(raw) {
   return crypto.createHmac('sha256', SECRET).update(raw).digest('hex');
 }
 
+describe('GET /', () => {
+  it('redirects to /checkout instead of dead-ending', async () => {
+    const res = await fetch(`${baseUrl}/`, { redirect: 'manual' });
+    expect(res.status).toBe(302);
+    expect(res.headers.get('location')).toBe('/checkout');
+  });
+});
+
 describe('POST /webhook/razorpay — signature enforcement over the raw body', () => {
   it('ACCEPTS a correctly signed payload (200)', async () => {
     const raw = Buffer.from(JSON.stringify(makePaymentFailed({ id: 'pay_1', orderId: 'order_1' })));
