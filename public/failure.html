@@ -91,9 +91,17 @@
   .recovery-action:disabled { opacity: 0.6; cursor: default; }
   .recovery-status { font-size: 12.5px; color: var(--text-secondary); margin-top: 8px; }
   .recovery-hint { font-size: 12px; color: var(--text-muted); margin-top: 6px; }
-  .poll-indicator { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--text-muted); margin: -8px 0 20px; }
+  .poll-indicator { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--text-muted); margin: -8px 0 12px; }
   .poll-dot { width: 6px; height: 6px; border-radius: 999px; background: var(--status-warning); animation: poll-pulse 1.2s ease-in-out infinite; }
   @keyframes poll-pulse { 0%, 100% { opacity: 0.25; } 50% { opacity: 1; } }
+  .demo-controls { margin: 0 0 20px; padding: 10px 12px; border: 1px dashed var(--hairline); border-radius: 8px; }
+  .demo-upgrade-btn {
+    font-family: "IBM Plex Sans", sans-serif; font-weight: 600; font-size: 12.5px;
+    background: transparent; color: var(--text-secondary); border: 1px solid var(--hairline);
+    border-radius: 6px; padding: 6px 10px; cursor: pointer;
+  }
+  .demo-upgrade-btn:disabled { opacity: 0.6; cursor: default; }
+  .demo-upgrade-status { font-size: 12px; color: var(--text-muted); margin-top: 6px; }
   .err { color: #d03b3b; }
   .ref { font-family: "IBM Plex Mono", monospace; }
 </style>
@@ -129,6 +137,7 @@
           el('span', { class: 'poll-dot' }),
           el('span', { text: 'Watching for a status update from your bank…' }),
         ]));
+        app.appendChild(buildDemoUpgradeControl(m.id));
       }
 
       const qa = el('dl', { class: 'qa' });
@@ -164,6 +173,42 @@
       ]);
       rec.appendChild(buildRecoveryAction(m));
       app.appendChild(rec);
+    }
+
+    // Demo-only control: fires the REAL confirming-poller (via the existing
+    // /api/demo/upgrade-confirming endpoint -- see src/api/demoUpgrade.js)
+    // against the row currently on screen, so a recording doesn't have to
+    // wait for the real 5-minute poll cycle. Only ever shown on a CONFIRMING
+    // screen. Does not re-render anything itself -- the setInterval already
+    // running from watchForUpdate() picks up the change and re-renders on
+    // its own, same as it would for a real upgrade with no button involved.
+    function buildDemoUpgradeControl(id) {
+      const btn = el('button', { class: 'demo-upgrade-btn', type: 'button', text: 'Simulate bank confirmation (demo)' });
+      const status = el('div', { class: 'demo-upgrade-status' });
+
+      btn.addEventListener('click', async function () {
+        btn.disabled = true;
+        status.textContent = 'Requesting confirmation from the bank (simulated)…';
+        try {
+          const r = await fetch('/api/demo/upgrade-confirming', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ paymentId: id }),
+          });
+          const body = await r.json();
+          if (!r.ok) {
+            status.textContent = `Could not upgrade: ${body.error || r.status}`;
+            btn.disabled = false;
+            return;
+          }
+          status.textContent = 'Confirmed — waiting for the page to pick it up…';
+        } catch (e) {
+          status.textContent = `Could not reach the service: ${e.message}`;
+          btn.disabled = false;
+        }
+      });
+
+      return el('div', { class: 'demo-controls' }, [btn, status]);
     }
 
     // Turns the recovery engine's decision into an action: a FRESH order via
