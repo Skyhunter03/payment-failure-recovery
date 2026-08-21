@@ -100,7 +100,7 @@ Requires **Node 20+**. `better-sqlite3` is a native module, so a first
 ```bash
 npm install
 cp .env.example .env          # then set RAZORPAY_WEBHOOK_SECRET
-npm test                      # the logic + security tests
+npm test                      # the logic + security tests (63 tests)
 npm run simulate              # prints the modelled comparison + its assumptions
 npm start                     # starts the webhook service on $PORT (default 3000)
 ```
@@ -167,8 +167,8 @@ scripts/
   simulate.js          seeded simulation; assumptions declared + printed
   send-test-webhook.js signs and posts a sample payload to a running server
   rng.js               seeded PRNG
-test/                  vitest: classify, recovery, signature, message, money,
-                       handler (idempotency/suppression), server (HTTP)
+test/                  vitest, 63 tests: classify, recovery, signature, message,
+                       money, handler (idempotency/suppression), server (HTTP)
 ```
 
 ## Swapping SQLite → Postgres
