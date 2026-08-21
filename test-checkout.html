@@ -64,9 +64,18 @@
         theme: { color: '#3399cc' }
       });
       // Full failure object: response.error has code, description, reason,
-      // source, step, and metadata (payment_id, order_id).
+      // source, step, and metadata (payment_id, order_id). Auto-navigate to
+      // the customer screen for THIS payment — failure.html itself retries
+      // briefly if the webhook hasn't arrived yet (real delivery is async and
+      // can trail this client-side event by a moment).
       rzp.on('payment.failed', function (response) {
         log('FAILED (payment.failed) response:', response);
+        const paymentId = response.error && response.error.metadata && response.error.metadata.payment_id;
+        if (paymentId) {
+          setTimeout(function () {
+            location.href = '/failure.html?id=' + encodeURIComponent(paymentId) + '&from=checkout';
+          }, 600);
+        }
       });
       rzp.open();
     });

@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Payment-failure recovery — live demo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700;800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    color-scheme: light;
+    --surface-page:   #f9f9f7;
+    --surface-card:   #fcfcfb;
+    --text-primary:   #0b0b0b;
+    --text-secondary: #52514e;
+    --text-muted:     #898781;
+    --hairline:       #e1e0d9;
+    --ring:           rgba(11,11,11,0.10);
+    --status-good:    #0ca30c;
+    --status-warning: #fab219;
+    --lane-silent:    #2a78d6;
+    --lane-guided:    #1baf7a;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:where(:not([data-theme="light"])) {
+      color-scheme: dark;
+      --surface-page: #0d0d0d; --surface-card: #1a1a19;
+      --text-primary: #ffffff; --text-secondary: #c3c2b7; --text-muted: #898781;
+      --hairline: #2c2c2a; --ring: rgba(255,255,255,0.10);
+      --lane-silent: #3987e5; --lane-guided: #199e70;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --surface-page: #0d0d0d; --surface-card: #1a1a19;
+    --text-primary: #ffffff; --text-secondary: #c3c2b7; --text-muted: #898781;
+    --hairline: #2c2c2a; --ring: rgba(255,255,255,0.10);
+    --lane-silent: #3987e5; --lane-guided: #199e70;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--surface-page); color: var(--text-primary);
+    font-family: "IBM Plex Sans", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 760px; margin: 0 auto; padding: 40px 20px 64px; }
+  h1 { font-family: "Archivo", sans-serif; font-weight: 800; font-size: 26px; letter-spacing: -0.01em; margin: 0 0 6px; }
+  .subhead { color: var(--text-secondary); font-size: 14.5px; margin: 0 0 36px; line-height: 1.5; }
+  h2 {
+    font-family: "Archivo", sans-serif; font-weight: 700; font-size: 13px;
+    letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-muted);
+    margin: 0 0 12px; padding-top: 28px; border-top: 1px solid var(--hairline);
+  }
+  section:first-of-type h2 { border-top: none; padding-top: 0; }
+
+  .primary-link {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    background: var(--surface-card); border: 1px solid var(--hairline); border-radius: 10px;
+    padding: 16px 18px; text-decoration: none; color: var(--text-primary);
+    transition: border-color .15s ease;
+  }
+  .primary-link:hover { border-color: var(--lane-silent); }
+  .primary-link .t { font-family: "Archivo", sans-serif; font-weight: 700; font-size: 16px; }
+  .primary-link .d { font-size: 13px; color: var(--text-secondary); margin-top: 2px; }
+  .primary-link .arrow { font-family: "IBM Plex Mono", monospace; color: var(--text-muted); font-size: 18px; flex: none; }
+
+  .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  .card {
+    display: block; background: var(--surface-card); border: 1px solid var(--hairline);
+    border-radius: 10px; padding: 16px; text-decoration: none; color: var(--text-primary);
+    transition: border-color .15s ease;
+  }
+  .card:hover { border-color: var(--lane-guided); }
+  .card .dot { width: 10px; height: 10px; border-radius: 999px; margin-bottom: 10px; }
+  .card.not-debited .dot { background: var(--status-good); }
+  .card.debited .dot { background: var(--lane-guided); }
+  .card.confirming .dot { background: var(--status-warning); }
+  .card .state { font-family: "IBM Plex Mono", monospace; font-size: 11px; color: var(--text-muted); margin-bottom: 4px; }
+  .card .headline { font-family: "Archivo", sans-serif; font-weight: 700; font-size: 14.5px; line-height: 1.35; margin-bottom: 8px; }
+  .card .note { font-size: 12px; color: var(--text-secondary); line-height: 1.5; }
+
+  .caption {
+    font-size: 12.5px; color: var(--text-muted); margin-top: 14px; line-height: 1.6;
+    background: var(--surface-card); border: 1px solid var(--hairline); border-radius: 8px; padding: 12px 14px;
+  }
+  .caption code { font-family: "IBM Plex Mono", monospace; }
+
+  @media (max-width: 640px) { .cards { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Payment-failure recovery</h1>
+    <p class="subhead">On a Razorpay <code>payment.failed</code> webhook, tells the customer where their money is — never guessing a debit — and offers the recovery path most likely to succeed for that cause. Test mode, live on Render.</p>
+
+    <section>
+      <h2>Trigger a real failure</h2>
+      <a class="primary-link" href="/checkout">
+        <span><span class="t">Open the checkout</span><br><span class="d">Real Razorpay Checkout, test mode — fail a payment and get redirected straight to the customer screen it produces.</span></span>
+        <span class="arrow">→</span>
+      </a>
+    </section>
+
+    <section>
+      <h2>Or jump straight to a customer screen</h2>
+      <div class="cards">
+        <a class="card not-debited" href="/failure.html?id=pay_notdebited_demo_43d4ce6a2b2a">
+          <div class="dot"></div>
+          <div class="state">NOT_DEBITED</div>
+          <div class="headline">No money left your account.</div>
+          <div class="note">Pre-authorisation decline (incorrect OTP), no acquirer reference — the payment never touched the bank.</div>
+        </a>
+        <a class="card debited" href="/failure.html?id=pay_debited_demo_503b776c3d70">
+          <div class="dot"></div>
+          <div class="state">DEBITED_REVERSAL_EXPECTED</div>
+          <div class="headline">Money left, and it's on its way back.</div>
+          <div class="note">A real signed webhook with an acquirer reference (RRN) present — see the note below on why this isn't triggered from a live test card.</div>
+        </a>
+        <a class="card confirming" href="/failure.html?id=pay_confirming_demo_6dd1926cc367">
+          <div class="dot"></div>
+          <div class="state">CONFIRMING</div>
+          <div class="headline">We're checking with your bank.</div>
+          <div class="note">Infra failure (issuer down), no reference yet — genuinely uncertain, so no reversal date is invented.</div>
+        </a>
+      </div>
+      <p class="caption">
+        The <strong>DEBITED_REVERSAL_EXPECTED</strong> screen is driven by a real, correctly-signed
+        <code>payment.failed</code> webhook with a production-shaped payload (an acquirer reference
+        present) — already verified end-to-end and persisted in the live database, not a mock.
+        Razorpay's test mode doesn't route through a real bank, so it has no acquirer RRN to hand
+        back on a live test-card failure; there's no test card that naturally produces this state.
+      </p>
+    </section>
+
+    <section>
+      <h2>The numbers</h2>
+      <a class="primary-link" href="/dashboard.html">
+        <span><span class="t">Silent handling vs. explained &amp; routed</span><br><span class="d">Modelled comparison at N = 500 simulated failures — clearly labelled, not live traffic.</span></span>
+        <span class="arrow">→</span>
+      </a>
+    </section>
+  </div>
+</body>
+</html>

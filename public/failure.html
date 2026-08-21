@@ -146,26 +146,44 @@
       app.appendChild(rec);
     }
 
+    // Real webhook delivery is async and can trail the browser landing here
+    // (checkout.html redirects on the client-side payment.failed event, which
+    // fires before Razorpay's server-to-server webhook necessarily has). Only
+    // retry a 404 when we arrived via that redirect (?from=checkout) — a
+    // direct link to a genuinely missing id should 404 immediately, not stall.
+    const RETRY_INTERVAL_MS = 700;
+    const MAX_RETRIES = 8; // ~5.6s total
+
     async function load() {
-      const id = new URLSearchParams(location.search).get('id');
+      const params = new URLSearchParams(location.search);
+      const id = params.get('id');
+      const fromCheckout = params.get('from') === 'checkout';
       const app = document.getElementById('app');
       if (!id) {
         app.innerHTML = '';
         app.appendChild(el('p', { class: 'err', text: 'No ?id= given. Open this page as /failure.html?id=<payment-or-demo-id>.' }));
         return;
       }
-      try {
-        const res = await fetch(`/api/failure/${encodeURIComponent(id)}`);
-        if (!res.ok) {
+
+      for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+        try {
+          const res = await fetch(`/api/failure/${encodeURIComponent(id)}`);
+          if (res.ok) { render(await res.json()); return; }
+          if (res.status === 404 && fromCheckout && attempt < MAX_RETRIES) {
+            app.innerHTML = '';
+            app.appendChild(el('p', { class: 'err', text: `Waiting for the webhook to arrive… (${attempt + 1}/${MAX_RETRIES})` }));
+            await new Promise((r) => setTimeout(r, RETRY_INTERVAL_MS));
+            continue;
+          }
           const body = await res.json().catch(() => ({}));
           app.innerHTML = '';
           app.appendChild(el('p', { class: 'err', text: `${res.status}: ${body.error || 'failed to load'}` }));
           return;
+        } catch (e) {
+          app.innerHTML = '';
+          app.appendChild(el('p', { class: 'err', text: `Could not reach the service: ${e.message}` }));
+          return;
         }
-        render(await res.json());
-      } catch (e) {
-        app.innerHTML = '';
-        app.appendChild(el('p', { class: 'err', text: `Could not reach the service: ${e.message}` }));
       }
     }
     load();

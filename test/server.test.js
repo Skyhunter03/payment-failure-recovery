@@ -43,10 +43,18 @@ function sign(raw) {
 }
 
 describe('GET /', () => {
-  it('redirects to /checkout instead of dead-ending', async () => {
+  it('redirects to /demo instead of dead-ending', async () => {
     const res = await fetch(`${baseUrl}/`, { redirect: 'manual' });
     expect(res.status).toBe(302);
-    expect(res.headers.get('location')).toBe('/checkout');
+    expect(res.headers.get('location')).toBe('/demo');
+  });
+});
+
+describe('GET /demo', () => {
+  it('serves the demo hub page', async () => {
+    const res = await fetch(`${baseUrl}/demo`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toMatch(/html/);
   });
 });
 
