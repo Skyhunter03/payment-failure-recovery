@@ -154,6 +154,15 @@ export function createApp({
       const rawBody = req.body; // Buffer, thanks to express.raw
       const signature = req.get('x-razorpay-signature');
 
+      // Log receipt FIRST, before any check — so if something stops the
+      // request from ever reaching us (network, DNS, wrong URL registered in
+      // the Razorpay dashboard), that's visible as an ABSENCE of this line in
+      // Render's logs, distinct from every failure mode below it.
+      log.info('webhook_received', {
+        bytes: rawBody ? rawBody.length : 0,
+        hasSignature: Boolean(signature),
+      });
+
       // 1. Signature FIRST, over the raw bytes. No signature => never trust it.
       const ok = verifySignature({
         rawBody,
@@ -168,6 +177,7 @@ export function createApp({
         // 401, and NOT a 2xx — but this is an auth failure, not "please retry".
         return res.status(401).json({ ok: false, error: 'invalid signature' });
       }
+      log.info('signature_verified', {});
 
       // 2. Parse only after the signature proves the bytes are authentic.
       let parsed;

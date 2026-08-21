@@ -22,9 +22,12 @@
 
   <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
   <script>
-    // ── PASTE YOUR TEST KEY ID HERE (looks like rzp_test_XXXXXXXXXXXX) ──
-    const RAZORPAY_KEY_ID = 'rzp_test_TSIum28Cd0QS5Q';
-
+    // Order-based flow: fetch a real order from /create-order (server-side,
+    // uses RAZORPAY_KEY_ID + RAZORPAY_KEY_SECRET) before opening Checkout, so
+    // every attempt — success or failure — carries a real order_id. Without
+    // this, payments fail at payment_initiation with no order context and no
+    // proper failure webhook fires. MUST be opened via same-origin
+    // http://<host>/checkout (not the raw file) so fetch('/create-order') works.
     const logEl = document.getElementById('log');
     let firstLog = true;
     function log(label, obj) {
@@ -33,17 +36,25 @@
       logEl.textContent += label + '\n' + JSON.stringify(obj, null, 2) + '\n\n';
     }
 
-    document.getElementById('pay').addEventListener('click', function () {
+    document.getElementById('pay').addEventListener('click', async function () {
+      let order;
+      try {
+        const r = await fetch('/create-order', { method: 'POST' });
+        order = await r.json();
+        if (!r.ok) { log('CREATE-ORDER failed:', order); return; }
+      } catch (e) {
+        log('CREATE-ORDER error (is the service reachable?):', { message: String(e) });
+        return;
+      }
+      log('order created:', order);
+
       const rzp = new Razorpay({
-        key: RAZORPAY_KEY_ID,
-        amount: 149900,        // paise -> ₹1,499.00
-        currency: 'INR',
+        key: order.keyId,
+        order_id: order.orderId,
+        amount: order.amount,     // paise -> ₹1,499.00
+        currency: order.currency,
         name: 'Test Store',
         description: 'Test Product — ₹1,499',
-        // No order_id: client-only flow, key_id alone (no key_secret needed).
-        // A payment.failed from this page has no order_id, so the webhook
-        // service's validate.js will 400 it — this page is for exercising
-        // Checkout + logging the response object, not the full webhook path.
         handler: function (response) {
           log('SUCCESS (handler) response:', response);
         },
