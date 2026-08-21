@@ -49,6 +49,19 @@ export const config = {
   // logic (tests, the simulator) can run without a secret configured.
   followUpTicker: process.env.FOLLOWUP_TICKER !== 'false',
   followUpTickMs: Number(process.env.FOLLOWUP_TICK_MS || 60000),
+  // Webhook rate limit: Razorpay's own retries plus a burst of real failures
+  // shouldn't come close to this; it's a ceiling against abuse, not normal
+  // traffic. 60 req/min per IP by default — override via env if it's ever
+  // wrong for real volume.
+  rateLimitWindowMs: Number(process.env.RATE_LIMIT_WINDOW_MS || 60_000),
+  rateLimitMax: Number(process.env.RATE_LIMIT_MAX || 60),
+  // Number of reverse-proxy hops in front of the app, for Express's
+  // trust-proxy setting. MUST be a specific count, never `true` — that trusts
+  // an unbounded chain and lets a client set its own X-Forwarded-For to
+  // bypass IP-based rate limiting entirely. Render's traffic passes through
+  // Cloudflare (their edge) then Render's own load balancer = 2 hops.
+  // https://render.com/articles/how-render-handles-ddos-attacks
+  trustProxyHops: Number(process.env.TRUST_PROXY_HOPS || 2),
 };
 
 export function getWebhookSecret() {

@@ -1,4 +1,5 @@
 import express from 'express';
+import rateLimit from 'express-rate-limit';
 import crypto from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -7,7 +8,7 @@ import { verifySignature } from './webhook/signature.js';
 import { validateWebhook } from './webhook/validate.js';
 import { handleEvent } from './webhook/handler.js';
 import { makeConsoleDeliver } from './render.js';
-import { getRazorpayKeys } from './config.js';
+import { getRazorpayKeys, config } from './config.js';
 import * as db from './db/index.js';
 import { messageFromFailureRow } from './api/failureLookup.js';
 import { simulateFailure } from './api/simulate.js';
@@ -18,10 +19,23 @@ const publicDir = path.join(rootDir, 'public');
 const ORDER_AMOUNT_PAISE = 149900; // ₹1,499.00, the single test product
 
 // Builds the Express app. `getSecret` is injected so tests can supply their own
-// secret without touching env.
-export function createApp({ getSecret }) {
+// secret without touching env. rateLimitWindowMs/rateLimitMax default from
+// config but are overridable so tests can trip the limiter without sending 60
+// real requests.
+export function createApp({
+  getSecret,
+  rateLimitWindowMs = config.rateLimitWindowMs,
+  rateLimitMax = config.rateLimitMax,
+  trustProxyHops = config.trustProxyHops,
+}) {
   const app = express();
   app.disable('x-powered-by');
+  // A specific hop COUNT, never `true` — `true` trusts an unbounded chain,
+  // letting a client set its own X-Forwarded-For to fake a fresh IP on every
+  // request and bypass IP-based rate limiting entirely. Render's traffic
+  // passes through Cloudflare then Render's own load balancer (2 hops) before
+  // reaching this app — see config.js.
+  app.set('trust proxy', trustProxyHops);
 
   // Attach a request id to every request, and a logger bound to it.
   app.use((req, _res, next) => {
@@ -106,6 +120,21 @@ export function createApp({ getSecret }) {
     }
   });
 
+  // Caps abuse volume against the webhook endpoint, not normal traffic —
+  // Razorpay's own retries come nowhere close to this. Applied before raw-body
+  // parsing / signature verification so an abusive burst doesn't even pay for
+  // those. 429 + a warn log, same JSON-error shape as the rest of this route.
+  const webhookLimiter = rateLimit({
+    windowMs: rateLimitWindowMs,
+    max: rateLimitMax,
+    standardHeaders: true,
+    legacyHeaders: false,
+    handler: (req, res) => {
+      req.log.warn('rate_limited', { ip: req.ip });
+      res.status(429).json({ ok: false, error: 'rate limited' });
+    },
+  });
+
   // THE WEBHOOK ROUTE.
   //
   // express.raw() captures the exact bytes. This MUST come before any JSON
@@ -113,6 +142,7 @@ export function createApp({ getSecret }) {
   // We never mount express.json() globally, precisely to avoid that trap.
   app.post(
     '/webhook/razorpay',
+    webhookLimiter,
     express.raw({ type: '*/*' }),
     async (req, res) => {
       const log = req.log;

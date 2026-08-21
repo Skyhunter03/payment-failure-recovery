@@ -81,4 +81,45 @@ describe('POST /webhook/razorpay — signature enforcement over the raw body', (
     expect(b.status).toBe(200);
     expect((await b.json()).duplicate).toBe(true);
   });
+
+  it('REJECTS a correctly signed but malformed-JSON body (400)', async () => {
+    const raw = Buffer.from('{not valid json');
+    const res = await post(raw, { signature: sign(raw), eventId: 'evt_malformed' });
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toMatch(/JSON/i);
+  });
+});
+
+describe('POST /webhook/razorpay — rate limiting', () => {
+  let rlServer;
+  let rlBaseUrl;
+
+  beforeAll(async () => {
+    // A tiny max so the test trips the limiter without sending dozens of
+    // requests; production uses config.rateLimitMax (default 60/min).
+    const app = createApp({ getSecret: () => SECRET, rateLimitWindowMs: 60_000, rateLimitMax: 2 });
+    await new Promise((resolve) => {
+      rlServer = app.listen(0, () => {
+        rlBaseUrl = `http://127.0.0.1:${rlServer.address().port}`;
+        resolve();
+      });
+    });
+  });
+
+  afterAll(async () => new Promise((r) => rlServer.close(r)));
+
+  it('returns 429 once the per-window cap is exceeded', async () => {
+    const raw = Buffer.from(JSON.stringify(makePaymentFailed()));
+    const headers = { 'content-type': 'application/json', 'x-razorpay-signature': 'deadbeef' };
+    const post = (id) => fetch(`${rlBaseUrl}/webhook/razorpay`, {
+      method: 'POST', headers: { ...headers, 'x-razorpay-event-id': id }, body: raw,
+    });
+    const a = await post('evt_rl_1');
+    const b = await post('evt_rl_2');
+    const c = await post('evt_rl_3');
+    expect(a.status).toBe(401); // under the cap, reaches signature check
+    expect(b.status).toBe(401);
+    expect(c.status).toBe(429); // 3rd request within the window is capped
+    expect((await c.json()).error).toBe('rate limited');
+  });
 });
