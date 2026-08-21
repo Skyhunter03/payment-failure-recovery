@@ -13,5 +13,12 @@ services:
         sync: false
       - key: RAZORPAY_WEBHOOK_SECRET
         sync: false
+      # Test-mode API keys, used only by POST /create-order (the demo
+      # checkout's order-creation step) -- not needed to run the webhook
+      # service itself.
+      - key: RAZORPAY_KEY_ID
+        sync: false
+      - key: RAZORPAY_KEY_SECRET
+        sync: false
       - key: NODE_ENV
         value: production
