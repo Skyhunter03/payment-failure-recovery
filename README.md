@@ -83,7 +83,7 @@ flowchart TD
 - **Live customer-screen auto-update** — `public/failure.html`. The `CONFIRMING` screen re-fetches and re-renders itself on resolution (see Pillar 2).
 - **Repeatable CONFIRMING demo** — `/failure.html?demo=confirming` mints a fresh `CONFIRMING` row on every visit (`src/api/demoConfirming.js`, `POST /api/demo/fresh-confirming`), through the same real pipeline a webhook uses. A "Simulate bank confirmation (demo only — production uses the background poller)" button fires the real poller endpoint on demand.
 - **Recovery button, not just recovery text** — see Pillar 1.
-- **Deployed** — Render (Node/Express) + Neon Postgres. 69 tests, CI green (test + secret-scan) on every push.
+- **Deployed** — Render (Node/Express) + Neon Postgres. 71 tests, CI green (test + secret-scan) on every push.
 
 ### Planned (production architecture — explicitly not built)
 
@@ -163,7 +163,7 @@ Presence of `acquirer_data.rrn` is what moves the classification to `DEBITED_REV
 
 Everything below was re-derived directly from the code and the live deployment — not carried over from memory.
 
-**Tests:** 69 passing (`npm test` → 11 test files, 69 tests)
+**Tests:** 71 passing (`npm test` → 11 test files, 71 tests)
 
 **Routes**
 
@@ -221,7 +221,7 @@ src/
 - **Recovery button with method recommendation** — `public/failure.html` `buildRecoveryAction()`: creates a fresh order and opens Checkout with every method available, labelling the button per `recovery.method` without ever restricting which methods Checkout shows.
 
 **Live:** https://payment-failure-recovery.onrender.com
-**Commit:** `d9da3e92f707e737e51faddeeecb30468f8846fd`
+**Commit:** `699c7faf8ff4c0fe257adcb8257214a7ee8b3414`
 
 ---
 
@@ -230,7 +230,7 @@ src/
 ```bash
 npm install
 cp .env.example .env      # test-mode Razorpay keys only
-npm test                  # 69 tests
+npm test                  # 71 tests
 npm start
 ```
 
